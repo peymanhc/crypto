@@ -9,6 +9,10 @@ const port = 8000;
 app.use(cors())
 app.use(express.json());
 
+app.get('/', async (req, res) => {
+    res.send("Home Page");
+  });
+
 app.post('/strategy', async (req, res) => {
     const { symbol, timeframe } = req.body;
     const limit = 100;
