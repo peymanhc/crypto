@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Trading Strategy</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js"></script>
+</head>
+<body dir="rtl" >
+    <div class="container">
+        <h1>آنالیز کوین</h1>
+        <form id="trading-form">
+            <div class="form-group">
+                <label for="symbol">انتخاب کوین:</label>
+                <select id="symbol" name="symbol">
+                    <option value="BTC/USDT">BTC/USDT</option>
+                    <option value="ETH/USDT">ETH/USDT</option>
+                    <option value="BNB/USDT">BNB/USDT</option>
+                    <option value="UNI/USDT">UNI/USDT</option>
+                    <option value="LINK/USDT">LINK/USDT</option>
+                    <option value="TURBO/USDT">TURBO/USDT</option>
+                    <option value="XRP/USDT">XRP/USDT</option>
+                    <option value="FRM/USDT">FRM/USDT</option>
+                    <option value="ATOM/USDT">ATOM/USDT</option>
+                    <option value="CAKE/USDT">CAKE/USDT</option>
+                    <option value="BNB/USDT">BNB/USDT</option>
+                    <option value="LTC/USDT">LTC/USDT</option>
+                    <option value="TON/USDT">TON/USDT</option>
+                    <option value="PEPE/USDT">PEPE/USDT</option>
+                    <option value="SOL/USDT">SOL/USDT</option>
+                    <option value="NEAR/USDT">NEAR/USDT</option>
+                    <option value="SUI/USDT">SUI/USDT</option>
+                    <option value="ARKM/USDT">ARKM/USDT</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="timeframe">تایم فریم:</label>
+                <select id="timeframe" name="timeframe">
+                    <option value="1h">1 ساعته</option>
+                    <option value="4h">4 ساعته</option>
+                    <option value="1d">1 روزه</option>
+                </select>
+            </div>
+        </form>
+        <button onclick="strategy()">ثبت درخواست</button>
+        <div id="output"></div>
+    </div>
+</body>
+</html>
