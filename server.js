@@ -6,15 +6,11 @@ const cors = require('cors');
 const app = express();
 const port = 8000;
 
-app.use(cors())
+app.use(cors());
 app.use(express.json());
 
 app.get('/', async (req, res) => {
-    res.send("Home Page");
-  });
-
-app.post('/strategy', async (req, res) => {
-    const { symbol, timeframe } = req.body;
+    const { symbol, timeframe } = req.query; // Use req.query to get parameters from the URL
     const limit = 100;
 
     const fetchData = async (symbol, timeframe, limit) => {
@@ -46,28 +42,34 @@ app.post('/strategy', async (req, res) => {
         }));
     };
 
-    const data = await fetchData(symbol, timeframe,limit);
-    const smaShort = calculateSMA(data, 10);
-    const smaLong = calculateSMA(data, 50);
+    try {
+        const data = await fetchData(symbol, timeframe, limit);
+        const smaShort = calculateSMA(data, 10);
+        const smaLong = calculateSMA(data, 50);
 
-    const latestData = data[data.length - 1];
-    const latestSmaShort = smaShort[smaShort.length - 1].value;
-    const latestSmaLong = smaLong[smaLong.length - 1].value;
+        const latestData = data[data.length - 1];
+        const latestSmaShort = smaShort[smaShort.length - 1].value;
+        const latestSmaLong = smaLong[smaLong.length - 1].value;
 
-    let signal = "ایده ای ندارم";
-    if (latestData.close < latestSmaShort && latestSmaShort > latestSmaLong) {
-        signal = "ورود به موقعیت لانگ";
-    } else if (latestData.close > latestSmaShort && latestSmaShort < latestSmaLong) {
-        signal = "ورود به موقعیت شورت";
+        let signal = "ایده ای ندارم";
+        if (latestData.close < latestSmaShort && latestSmaShort > latestSmaLong) {
+            signal = "ورود به موقعیت لانگ";
+        } else if (latestData.close > latestSmaShort && latestSmaShort < latestSmaLong) {
+            signal = "ورود به موقعیت شورت";
+        }
+
+        res.json({
+            currentPrice: latestData.close,
+            smaShort: latestSmaShort,
+            smaLong: latestSmaLong,
+            signal: signal
+        });
+    } catch (error) {
+        console.error('Error fetching strategy:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
     }
-
-    res.json({
-        currentPrice: latestData.close,
-        smaShort: latestSmaShort,
-        smaLong: latestSmaLong,
-        signal: signal
-    });
 });
+
 
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
