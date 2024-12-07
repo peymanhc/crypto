@@ -1,8 +1,12 @@
 async function strategy() {
     const button = document.querySelector('button');
-    button.disabled = true;
-    button.innerText = 'در حال بارگذاری ...';
+    const container = document.getElementById("container")
+    const outputDiv = document.getElementById('output');
 
+    button.disabled = true;
+    outputDiv.innerHTML = ""
+    button.innerText = 'در حال بارگذاری ...';
+    container.style.opacity = "0.4"
     console.log("result.signal");
     const symbol = document.getElementById('symbol').value;
     const timeframe = document.getElementById('timeframe').value;
@@ -21,7 +25,6 @@ async function strategy() {
         }
 
         const result = await response.json();
-        const outputDiv = document.getElementById('output');
         outputDiv.innerHTML = `
             <p>قیمت فعلی: ${result.currentPrice}</p>
             <p>پوزیشن شورت: ${result.smaShort}</p>
@@ -35,5 +38,6 @@ async function strategy() {
     } finally {
         button.disabled = false; 
         button.innerText = 'ثبت درخواست'; 
+        container.style.opacity = "1"
     }
 }
