@@ -56,7 +56,7 @@ export const analyzeTradingStrategy = async (
     const latestSmaShort = smaShort[smaShort.length - 1];
     const latestSmaLong = smaLong[smaLong.length - 1];
 
-    let signal = "No Idea";
+    let signal = "Sideways Trend";
     if (latestPrice < latestSmaShort && latestSmaShort > latestSmaLong) {
       signal = "Get Short Position";
     } else if (latestPrice > latestSmaShort && latestSmaShort < latestSmaLong) {
