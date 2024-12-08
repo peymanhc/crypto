@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TRADING_PAIRS, TIMEFRAMES } from '../constants/trading';
 import { TradingFormData } from '../types/trading';
 
@@ -8,33 +8,79 @@ interface TradingFormProps {
 }
 
 const TradingForm: React.FC<TradingFormProps> = ({ onSubmit, isLoading }) => {
-  const [formData, setFormData] = React.useState<TradingFormData>({
+  const [formData, setFormData] = useState<TradingFormData>({
     symbol: TRADING_PAIRS[0],
     timeframe: TIMEFRAMES[0].value
   });
+  const [selectCoinMethod, setSelectCoinMethod] = useState(true); // Default to select box
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
   };
 
+  const handleChangeMethod = (value:boolean)=>{
+    setSelectCoinMethod(value)
+    setFormData({...formData,symbol:value? TRADING_PAIRS[0] :""})
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
+        <label className="block text-lg font-medium">Choose Coin Method</label>
+        <div>
+          <label>
+            <input
+              type="radio"
+              value="select"
+              className='mr-2'
+              checked={selectCoinMethod}
+              onChange={() => handleChangeMethod(true)}
+              disabled={isLoading}
+            />
+            Use WatchList Coins
+          </label>
+          <label className="ml-4">
+            <input
+              type="radio"
+              className='mr-2'
+              value="input"
+              checked={!selectCoinMethod}
+              onChange={() => handleChangeMethod(false)}
+              disabled={isLoading}
+            />
+            Write Coin Name
+          </label>
+        </div>
+      </div>
+
+      <div className="space-y-2">
         <label htmlFor="symbol" className="block text-lg font-medium">
-        Choose Coin
+          Choose Coin
         </label>
-        <select
-          id="symbol"
-          value={formData.symbol}
-          onChange={(e) => setFormData(prev => ({ ...prev, symbol: e.target.value }))}
-          className="w-full p-2 border rounded-lg bg-white"
-          disabled={isLoading}
-        >
-          {TRADING_PAIRS.map(pair => (
-            <option key={pair} value={pair}>{pair}</option>
-          ))}
-        </select>
+        {selectCoinMethod ? (
+          <select
+            id="symbol"
+            value={formData.symbol}
+            onChange={(e) => setFormData(prev => ({ ...prev, symbol: e.target.value }))}
+            className="w-full p-2 border rounded-lg bg-white"
+            disabled={isLoading}
+          >
+            {TRADING_PAIRS.map(pair => (
+              <option key={pair} value={pair}>{pair}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            id="symbol"
+            value={formData.symbol}
+            onChange={(e) => setFormData(prev => ({ ...prev, symbol: e.target.value.toLocaleUpperCase() }))}
+            className="w-full p-2 border rounded-lg bg-white"
+            placeholder="Enter coin name"
+            disabled={isLoading}
+          />
+        )}
       </div>
 
       <div className="space-y-2">

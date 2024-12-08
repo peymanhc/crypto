@@ -4,6 +4,7 @@ import TradingForm from './components/TradingForm';
 import Result from './components/Result';
 import { fetchTradingStrategy } from './services/api';
 import { AlertCircle } from 'lucide-react';
+import FAQ from './components/Faq';
 
 function App() {
   const [result, setResult] = useState<TradingResult | null>(null);
@@ -26,8 +27,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen pt-[50px] bg-gray-100" >
-      <div className="max-w-2xl mx-auto p-6">
+    <div className="min-h-screen pt-[10px] bg-gray-100" >
+      <div className="max-w-2xl mx-auto px-6 py-3">
         <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">
         Coin Analysis
         </h1>
@@ -46,8 +47,8 @@ function App() {
             <Result result={result} />
           )}
         </div>
+        <FAQ/>
         <div className='mt-[50px] text-center' >Contact Us to Add Your Desired Coin <br/><p className='font-bold' >Peymanhc@gmail.com</p></div>
-
       </div>
     </div>
   );
