@@ -18,7 +18,6 @@ const Result: React.FC<ResultProps> = ({ result }) => {
     if (signal.includes('Short') || signal.includes("Bearish")) return <TrendingDown className="w-6 h-6" />;
     return null;
   };
-
   return (
     <div className="bg-white p-6 rounded-lg  space-y-4">
       <div className="grid grid-cols-12 gap-4">
@@ -28,11 +27,11 @@ const Result: React.FC<ResultProps> = ({ result }) => {
         </div>
         <div className="space-y-1 col-span-4">
           <p className="text-green-700 font-bold text-[12px]">Support:</p>
-          <p className="text-xl font-bold text-green-700">{result.supportcurrentPrice}</p>
+          <p className="text-xl font-bold text-green-700">{result.support}</p>
         </div>
         <div className="space-y-1 col-span-4">
           <p className="text-red-600 font-bold text-[12px]">Resistance:</p>
-          <p className="text-xl font-bold text-red-600">{result.resistancecurrentPrice}</p>
+          <p className="text-xl font-bold text-red-600">{result.resistance}</p>
         </div>
         {/* {result.signal !== "Sideways Trend" && <>
         <div className="space-y-1 col-span-4">
