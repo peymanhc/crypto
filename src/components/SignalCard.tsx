@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { TradePlan, RiskLevel } from '../types/trading';
 import { TIMEFRAMES } from '../constants/trading';
-import { fetchCurrentPrice, sendSignalToTelegram, isTelegramConfigured, TELEGRAM_BOT_USERNAME } from '../services/api';
+import {
+  fetchCurrentPrice,
+  sendSignalToTelegram,
+  isTelegramConfigured,
+  TELEGRAM_BOT_USERNAME,
+  isAutoCloseAvailable,
+  scheduleTelegramMessage,
+} from '../services/api';
 import { Zap, ShieldCheck, ShieldAlert, ShieldX, Timer, TrendingUp, TrendingDown, RefreshCw, Copy, Check, Send } from 'lucide-react';
 
 interface SignalCardProps {
@@ -106,12 +113,43 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     }
   };
 
+  const [autoClose, setAutoClose] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('telegram-auto-close') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [autoCloseStatus, setAutoCloseStatus] = useState<'scheduled' | 'failed' | null>(null);
+
+  const handleAutoCloseChange = (checked: boolean) => {
+    setAutoClose(checked);
+    try {
+      localStorage.setItem('telegram-auto-close', checked ? '1' : '0');
+    } catch {
+      // storage unavailable — checkbox still works for this session
+    }
+  };
+
   const sendToChannel = async (action: TgAction, text: string) => {
     if (!channel.trim() || tgState?.status === 'sending') return;
     setTgState({ action, status: 'sending' });
     try {
       await sendSignalToTelegram(text, channel);
       setTgState({ action, status: 'sent' });
+      // The Worker holds this timer server-side, so it fires even if the browser closes
+      if (action === 'signal' && autoClose && isAutoCloseAvailable) {
+        try {
+          await scheduleTelegramMessage(
+            channel,
+            `CLOSE $${baseAsset(symbol)}`,
+            Math.max(1, Math.round(durationMs / 1000))
+          );
+          setAutoCloseStatus('scheduled');
+        } catch {
+          setAutoCloseStatus('failed');
+        }
+      }
     } catch {
       setTgState({ action, status: 'error' });
     }
@@ -285,6 +323,22 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
                 {tgButtonLabel('exit', `EXIT $${baseAsset(symbol)}`)}
               </button>
             </div>
+            {isAutoCloseAvailable && (
+              <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoClose}
+                  onChange={(e) => handleAutoCloseChange(e.target.checked)}
+                />
+                Auto-send CLOSE ${baseAsset(symbol)} after one {timeframeLabel} candle
+                {autoCloseStatus === 'scheduled' && (
+                  <span className="text-green-600 font-medium">— scheduled ✓</span>
+                )}
+                {autoCloseStatus === 'failed' && (
+                  <span className="text-red-600 font-medium">— scheduling failed</span>
+                )}
+              </label>
+            )}
             <p className="text-[10px] text-gray-400">
               {tgState?.status === 'error'
                 ? `Could not post — make sure ${TELEGRAM_BOT_USERNAME} is an admin of that channel.`
