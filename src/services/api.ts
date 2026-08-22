@@ -97,6 +97,30 @@ export const sendSignalToTelegram = async (text: string, channel: string): Promi
   });
 };
 
+// Optional Cloudflare Worker (see telegram-worker/) that fires a delayed message
+// server-side, so auto-close works even after the visitor closes the browser.
+const TELEGRAM_WORKER_URL = import.meta.env.VITE_TELEGRAM_WORKER_URL as string | undefined;
+
+export const isAutoCloseAvailable = Boolean(TELEGRAM_WORKER_URL);
+
+export const scheduleTelegramMessage = async (
+  channel: string,
+  text: string,
+  delaySeconds: number
+): Promise<void> => {
+  if (!TELEGRAM_WORKER_URL) {
+    throw new Error('Auto-close worker is not configured');
+  }
+  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/schedule`, {
+    channel,
+    text,
+    delaySeconds,
+  });
+  if (!response.data?.ok) {
+    throw new Error('Scheduling failed');
+  }
+};
+
 export const fetchCurrentPrice = async (symbol: string): Promise<number> => {
   const response = await axios.get(`${BINANCE_API_BASE}/ticker/price`, {
     params: { symbol: symbol.replace('/', '') },

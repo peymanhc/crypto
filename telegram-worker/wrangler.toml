@@ -1,0 +1,10 @@
+name = "crypto-signal-scheduler"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[durable_objects]
+bindings = [{ name = "CLOSE_SCHEDULER", class_name = "CloseScheduler" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CloseScheduler"]
