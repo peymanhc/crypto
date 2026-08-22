@@ -87,7 +87,8 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     `SL: ${formatPrice(plan.stopLoss)}`,
   ].join('\n');
 
-  const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  type TgAction = 'signal' | 'close' | 'exit';
+  const [tgState, setTgState] = useState<{ action: TgAction; status: 'sending' | 'sent' | 'error' } | null>(null);
   const [channel, setChannel] = useState<string>(() => {
     try {
       return localStorage.getItem('telegram-channel') ?? '';
@@ -105,16 +106,23 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     }
   };
 
-  const handleSendToTelegram = async () => {
-    if (!channel.trim()) return;
-    setSendState('sending');
+  const sendToChannel = async (action: TgAction, text: string) => {
+    if (!channel.trim() || tgState?.status === 'sending') return;
+    setTgState({ action, status: 'sending' });
     try {
-      await sendSignalToTelegram(signalText, channel);
-      setSendState('sent');
+      await sendSignalToTelegram(text, channel);
+      setTgState({ action, status: 'sent' });
     } catch {
-      setSendState('error');
+      setTgState({ action, status: 'error' });
     }
-    setTimeout(() => setSendState('idle'), 2500);
+    setTimeout(() => setTgState(null), 2500);
+  };
+
+  const tgButtonLabel = (action: TgAction, idle: string): string => {
+    if (tgState?.action !== action) return idle;
+    if (tgState.status === 'sending') return 'Sending...';
+    if (tgState.status === 'sent') return 'Sent!';
+    return 'Failed';
   };
 
   const handleCopy = async () => {
@@ -222,41 +230,69 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
         </p>
       )}
 
-      {isTrade && isTelegramConfigured && (
-        <div className="shrink-0 space-y-1">
-          <div className="flex gap-1.5">
-            <input
-              type="text"
-              value={channel}
-              onChange={(e) => handleChannelChange(e.target.value)}
-              placeholder="@your_channel"
-              className="flex-1 min-w-0 px-2 py-1 text-xs border rounded-md"
-            />
-            <button
-              type="button"
-              onClick={handleSendToTelegram}
-              disabled={sendState === 'sending' || !channel.trim()}
-              title="Send to your Telegram channel"
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors
-                ${sendState === 'sent'
-                  ? 'bg-green-50 border-green-300 text-green-700'
-                  : sendState === 'error'
-                    ? 'bg-red-50 border-red-300 text-red-700'
-                    : sendState === 'sending' || !channel.trim()
-                      ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-white border-blue-300 text-blue-600 hover:bg-blue-50'}`}
-            >
-              {sendState === 'sent' ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-              {sendState === 'sent' ? 'Sent!' : sendState === 'error' ? 'Failed' : sendState === 'sending' ? 'Sending...' : 'Send'}
-            </button>
+      {isTrade && isTelegramConfigured && (() => {
+        const busy = tgState?.status === 'sending';
+        const disabled = busy || !channel.trim();
+        const buttonClass = (action: TgAction, idleColors: string) =>
+          `flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors
+           ${tgState?.action === action && tgState.status === 'sent'
+            ? 'bg-green-50 border-green-300 text-green-700'
+            : tgState?.action === action && tgState.status === 'error'
+              ? 'bg-red-50 border-red-300 text-red-700'
+              : disabled
+                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                : idleColors}`;
+        return (
+          <div className="shrink-0 space-y-1">
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={channel}
+                onChange={(e) => handleChannelChange(e.target.value)}
+                placeholder="@your_channel"
+                className="flex-1 min-w-0 px-2 py-1 text-xs border rounded-md"
+              />
+              <button
+                type="button"
+                onClick={() => sendToChannel('signal', signalText)}
+                disabled={disabled}
+                title="Send this signal to your Telegram channel"
+                className={buttonClass('signal', 'bg-white border-blue-300 text-blue-600 hover:bg-blue-50')}
+              >
+                {tgState?.action === 'signal' && tgState.status === 'sent'
+                  ? <Check className="w-3.5 h-3.5" />
+                  : <Send className="w-3.5 h-3.5" />}
+                {tgButtonLabel('signal', 'Send')}
+              </button>
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => sendToChannel('close', `CLOSE $${baseAsset(symbol)}`)}
+                disabled={disabled}
+                title={`Post "CLOSE $${baseAsset(symbol)}" to your channel`}
+                className={`flex-1 ${buttonClass('close', 'bg-white border-amber-300 text-amber-600 hover:bg-amber-50')}`}
+              >
+                {tgButtonLabel('close', `CLOSE $${baseAsset(symbol)}`)}
+              </button>
+              <button
+                type="button"
+                onClick={() => sendToChannel('exit', `EXIT $${baseAsset(symbol)}`)}
+                disabled={disabled}
+                title={`Post "EXIT $${baseAsset(symbol)}" to your channel`}
+                className={`flex-1 ${buttonClass('exit', 'bg-white border-red-300 text-red-600 hover:bg-red-50')}`}
+              >
+                {tgButtonLabel('exit', `EXIT $${baseAsset(symbol)}`)}
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-400">
+              {tgState?.status === 'error'
+                ? `Could not post — make sure ${TELEGRAM_BOT_USERNAME} is an admin of that channel.`
+                : `Add ${TELEGRAM_BOT_USERNAME} as an admin of your channel, then these buttons post there.`}
+            </p>
           </div>
-          <p className="text-[10px] text-gray-400">
-            {sendState === 'error'
-              ? `Could not post — make sure ${TELEGRAM_BOT_USERNAME} is an admin of that channel.`
-              : `Add ${TELEGRAM_BOT_USERNAME} as an admin of your channel, then Send posts this signal there.`}
-          </p>
-        </div>
-      )}
+        );
+      })()}
 
       {isTrade && !evaluation && !evalError && (
         <div className="bg-blue-50 text-blue-700 rounded-lg px-3 py-2 text-sm shrink-0 space-y-1.5">
