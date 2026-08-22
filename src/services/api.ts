@@ -99,7 +99,7 @@ export const sendSignalToTelegram = async (text: string, channel: string): Promi
 
 // Optional Cloudflare Worker (see telegram-worker/) that fires a delayed message
 // server-side, so auto-close works even after the visitor closes the browser.
-const TELEGRAM_WORKER_URL = import.meta.env.VITE_TELEGRAM_WORKER_URL as string | undefined;
+const TELEGRAM_WORKER_URL = "https://crypto-signal-scheduler.peymanhc.workers.dev";
 
 export const isAutoCloseAvailable = Boolean(TELEGRAM_WORKER_URL);
 
@@ -115,6 +115,34 @@ export const scheduleTelegramMessage = async (
     channel,
     text,
     delaySeconds,
+  });
+  if (!response.data?.ok) {
+    throw new Error('Scheduling failed');
+  }
+};
+
+export interface ProfitCloseParams {
+  symbol: string;
+  direction: 'Long' | 'Short';
+  entry: number;
+  leverage: number;
+  targetPct: number;
+}
+
+// Server-side price watch: the Worker polls Binance every 3s and posts `text`
+// once the leveraged PnL reaches targetPct (watch expires after 24h)
+export const scheduleProfitClose = async (
+  channel: string,
+  text: string,
+  profitTarget: ProfitCloseParams
+): Promise<void> => {
+  if (!TELEGRAM_WORKER_URL) {
+    throw new Error('Auto-close worker is not configured');
+  }
+  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/schedule`, {
+    channel,
+    text,
+    profitTarget,
   });
   if (!response.data?.ok) {
     throw new Error('Scheduling failed');

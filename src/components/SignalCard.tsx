@@ -8,6 +8,7 @@ import {
   TELEGRAM_BOT_USERNAME,
   isAutoCloseAvailable,
   scheduleTelegramMessage,
+  scheduleProfitClose,
 } from '../services/api';
 import { Zap, ShieldCheck, ShieldAlert, ShieldX, Timer, TrendingUp, TrendingDown, RefreshCw, Copy, Check, Send } from 'lucide-react';
 
@@ -26,7 +27,9 @@ const baseAsset = (symbol: string): string => {
 
 const formatPrice = (value?: number): string => {
   if (value === undefined) return '—';
-  return value >= 1 ? value.toFixed(2) : Number(value.toPrecision(5)).toString();
+  // Two decimals is only enough for high-priced coins; keep 5 significant
+  // digits below 1000 so ATR-spaced TP levels stay distinguishable
+  return value >= 1000 ? value.toFixed(2) : Number(value.toPrecision(5)).toString();
 };
 
 const timeframeMs = (timeframe: string): number => {
@@ -113,23 +116,45 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     }
   };
 
-  const [autoClose, setAutoClose] = useState<boolean>(() => {
+  type CloseMode = 'none' | 'time' | 'profit';
+  const [closeMode, setCloseMode] = useState<CloseMode>(() => {
     try {
-      return localStorage.getItem('telegram-auto-close') === '1';
+      const stored = localStorage.getItem('telegram-close-mode');
+      return stored === 'time' || stored === 'profit' ? stored : 'none';
     } catch {
-      return false;
+      return 'none';
+    }
+  });
+  const [profitTargetPct, setProfitTargetPct] = useState<string>(() => {
+    try {
+      return localStorage.getItem('telegram-profit-target') ?? '2';
+    } catch {
+      return '2';
     }
   });
   const [autoCloseStatus, setAutoCloseStatus] = useState<'scheduled' | 'failed' | null>(null);
 
-  const handleAutoCloseChange = (checked: boolean) => {
-    setAutoClose(checked);
+  // The two auto-close options are mutually exclusive: checking one unchecks the other
+  const handleCloseModeToggle = (mode: 'time' | 'profit', checked: boolean) => {
+    const next: CloseMode = checked ? mode : 'none';
+    setCloseMode(next);
     try {
-      localStorage.setItem('telegram-auto-close', checked ? '1' : '0');
+      localStorage.setItem('telegram-close-mode', next);
     } catch {
       // storage unavailable — checkbox still works for this session
     }
   };
+
+  const handleProfitTargetChange = (value: string) => {
+    setProfitTargetPct(value);
+    try {
+      localStorage.setItem('telegram-profit-target', value);
+    } catch {
+      // storage unavailable
+    }
+  };
+
+  const clampedProfitTarget = () => Math.min(100, Math.max(1, Number(profitTargetPct) || 2));
 
   const sendToChannel = async (action: TgAction, text: string) => {
     if (!channel.trim() || tgState?.status === 'sending') return;
@@ -137,14 +162,21 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     try {
       await sendSignalToTelegram(text, channel);
       setTgState({ action, status: 'sent' });
-      // The Worker holds this timer server-side, so it fires even if the browser closes
-      if (action === 'signal' && autoClose && isAutoCloseAvailable) {
+      // The Worker holds the timer / price-watch server-side, so it fires even if the browser closes
+      if (action === 'signal' && closeMode !== 'none' && isAutoCloseAvailable) {
         try {
-          await scheduleTelegramMessage(
-            channel,
-            `CLOSE $${baseAsset(symbol)}`,
-            Math.max(1, Math.round(durationMs / 1000))
-          );
+          const closeText = `CLOSE $${baseAsset(symbol)}`;
+          if (closeMode === 'time') {
+            await scheduleTelegramMessage(channel, closeText, Math.max(1, Math.round(durationMs / 1000)));
+          } else {
+            await scheduleProfitClose(channel, closeText, {
+              symbol: symbol.replace('/', ''),
+              direction: plan.direction as 'Long' | 'Short',
+              entry: plan.entry,
+              leverage: plan.leverage,
+              targetPct: clampedProfitTarget(),
+            });
+          }
           setAutoCloseStatus('scheduled');
         } catch {
           setAutoCloseStatus('failed');
@@ -324,20 +356,48 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
               </button>
             </div>
             {isAutoCloseAvailable && (
-              <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoClose}
-                  onChange={(e) => handleAutoCloseChange(e.target.checked)}
-                />
-                Auto-send CLOSE ${baseAsset(symbol)} after one {timeframeLabel} candle
-                {autoCloseStatus === 'scheduled' && (
-                  <span className="text-green-600 font-medium">— scheduled ✓</span>
-                )}
-                {autoCloseStatus === 'failed' && (
-                  <span className="text-red-600 font-medium">— scheduling failed</span>
-                )}
-              </label>
+              <div className="space-y-1">
+                <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={closeMode === 'time'}
+                    onChange={(e) => handleCloseModeToggle('time', e.target.checked)}
+                  />
+                  Auto-send CLOSE ${baseAsset(symbol)} after one {timeframeLabel} candle
+                  {closeMode === 'time' && autoCloseStatus === 'scheduled' && (
+                    <span className="text-green-600 font-medium">— scheduled ✓</span>
+                  )}
+                  {closeMode === 'time' && autoCloseStatus === 'failed' && (
+                    <span className="text-red-600 font-medium">— scheduling failed</span>
+                  )}
+                </label>
+                <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer flex-wrap">
+                  <input
+                    type="checkbox"
+                    checked={closeMode === 'profit'}
+                    onChange={(e) => handleCloseModeToggle('profit', e.target.checked)}
+                  />
+                  Auto-send CLOSE ${baseAsset(symbol)} at leveraged profit ≥
+                  {closeMode === 'profit' && (
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={0.5}
+                      value={profitTargetPct}
+                      onChange={(e) => handleProfitTargetChange(e.target.value)}
+                      className="w-14 px-1 py-0.5 border rounded text-[11px]"
+                    />
+                  )}
+                  % <span className="text-gray-400">(price checked every 3s, server-side)</span>
+                  {closeMode === 'profit' && autoCloseStatus === 'scheduled' && (
+                    <span className="text-green-600 font-medium">— watching ✓</span>
+                  )}
+                  {closeMode === 'profit' && autoCloseStatus === 'failed' && (
+                    <span className="text-red-600 font-medium">— scheduling failed</span>
+                  )}
+                </label>
+              </div>
             )}
             <p className="text-[10px] text-gray-400">
               {tgState?.status === 'error'
