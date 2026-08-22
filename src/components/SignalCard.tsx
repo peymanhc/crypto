@@ -154,7 +154,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     }
   };
 
-  const clampedProfitTarget = () => Math.min(100, Math.max(1, Number(profitTargetPct) || 2));
+  const clampedProfitTarget = () => Math.min(100, Math.max(0.1, Number(profitTargetPct) || 2));
 
   const sendToChannel = async (action: TgAction, text: string) => {
     if (!channel.trim() || tgState?.status === 'sending') return;
@@ -381,9 +381,9 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
                   {closeMode === 'profit' && (
                     <input
                       type="number"
-                      min={1}
+                      min={0.1}
                       max={100}
-                      step={0.5}
+                      step={0.1}
                       value={profitTargetPct}
                       onChange={(e) => handleProfitTargetChange(e.target.value)}
                       className="w-14 px-1 py-0.5 border rounded text-[11px]"
@@ -391,7 +391,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
                   )}
                   % <span className="text-gray-400">(price checked every 3s, server-side)</span>
                   {closeMode === 'profit' && autoCloseStatus === 'scheduled' && (
-                    <span className="text-green-600 font-medium">— watching ✓</span>
+                    <span className="text-green-600 font-medium">— watching ✓ (≥{clampedProfitTarget()}%)</span>
                   )}
                   {closeMode === 'profit' && autoCloseStatus === 'failed' && (
                     <span className="text-red-600 font-medium">— scheduling failed</span>
