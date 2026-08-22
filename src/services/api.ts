@@ -73,6 +73,30 @@ export const fetchTradingPairs = async (): Promise<string[]> => {
   return cachedPairs;
 };
 
+// ---------- Telegram channel integration ----------
+// One app-level bot (token via .env.local, see .env.example); each user enters
+// their OWN channel in the UI and adds the bot as admin there. Note: Vite bakes
+// the token into the built bundle, so it is extractable from a public deployment.
+const TELEGRAM_BOT_TOKEN = "8848108856:AAEsfl_WRDJy_o1WhLZ8r7Le96s7zSLH3KM"
+
+export const TELEGRAM_BOT_USERNAME = '@SignalPHC_bot';
+
+export const isTelegramConfigured = Boolean(TELEGRAM_BOT_TOKEN);
+
+export const sendSignalToTelegram = async (text: string, channel: string): Promise<void> => {
+  if (!TELEGRAM_BOT_TOKEN) {
+    throw new Error('Telegram is not configured');
+  }
+  const trimmed = channel.trim();
+  // Accept "@name", "name", a t.me link, or a numeric -100... id for private channels
+  const bare = trimmed.replace(/^https?:\/\/t\.me\//i, '');
+  const chatId = /^-?\d+$/.test(bare) ? bare : bare.startsWith('@') ? bare : `@${bare}`;
+  await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    chat_id: chatId,
+    text,
+  });
+};
+
 export const fetchCurrentPrice = async (symbol: string): Promise<number> => {
   const response = await axios.get(`${BINANCE_API_BASE}/ticker/price`, {
     params: { symbol: symbol.replace('/', '') },

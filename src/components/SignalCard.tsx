@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { TradePlan, RiskLevel } from '../types/trading';
 import { TIMEFRAMES } from '../constants/trading';
-import { fetchCurrentPrice } from '../services/api';
-import { Zap, ShieldCheck, ShieldAlert, ShieldX, Timer, TrendingUp, TrendingDown, RefreshCw, Copy, Check } from 'lucide-react';
+import { fetchCurrentPrice, sendSignalToTelegram, isTelegramConfigured, TELEGRAM_BOT_USERNAME } from '../services/api';
+import { Zap, ShieldCheck, ShieldAlert, ShieldX, Timer, TrendingUp, TrendingDown, RefreshCw, Copy, Check, Send } from 'lucide-react';
 
 interface SignalCardProps {
   symbol: string;
@@ -86,6 +86,36 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     ...plan.takeProfits.map((tp, index) => `TP${index + 1}: ${formatPrice(tp)}`),
     `SL: ${formatPrice(plan.stopLoss)}`,
   ].join('\n');
+
+  const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [channel, setChannel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('telegram-channel') ?? '';
+    } catch {
+      return '';
+    }
+  });
+
+  const handleChannelChange = (value: string) => {
+    setChannel(value);
+    try {
+      localStorage.setItem('telegram-channel', value);
+    } catch {
+      // storage unavailable (private mode etc.) — the field still works for this session
+    }
+  };
+
+  const handleSendToTelegram = async () => {
+    if (!channel.trim()) return;
+    setSendState('sending');
+    try {
+      await sendSignalToTelegram(signalText, channel);
+      setSendState('sent');
+    } catch {
+      setSendState('error');
+    }
+    setTimeout(() => setSendState('idle'), 2500);
+  };
 
   const handleCopy = async () => {
     try {
@@ -190,6 +220,42 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
         <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3 flex-1">
           No trade signal on the {timeframeLabel} timeframe right now — the market is sideways. Wait for a clear setup.
         </p>
+      )}
+
+      {isTrade && isTelegramConfigured && (
+        <div className="shrink-0 space-y-1">
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={channel}
+              onChange={(e) => handleChannelChange(e.target.value)}
+              placeholder="@your_channel"
+              className="flex-1 min-w-0 px-2 py-1 text-xs border rounded-md"
+            />
+            <button
+              type="button"
+              onClick={handleSendToTelegram}
+              disabled={sendState === 'sending' || !channel.trim()}
+              title="Send to your Telegram channel"
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors
+                ${sendState === 'sent'
+                  ? 'bg-green-50 border-green-300 text-green-700'
+                  : sendState === 'error'
+                    ? 'bg-red-50 border-red-300 text-red-700'
+                    : sendState === 'sending' || !channel.trim()
+                      ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-white border-blue-300 text-blue-600 hover:bg-blue-50'}`}
+            >
+              {sendState === 'sent' ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+              {sendState === 'sent' ? 'Sent!' : sendState === 'error' ? 'Failed' : sendState === 'sending' ? 'Sending...' : 'Send'}
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-400">
+            {sendState === 'error'
+              ? `Could not post — make sure ${TELEGRAM_BOT_USERNAME} is an admin of that channel.`
+              : `Add ${TELEGRAM_BOT_USERNAME} as an admin of your channel, then Send posts this signal there.`}
+          </p>
+        </div>
       )}
 
       {isTrade && !evaluation && !evalError && (
