@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AutopilotStatus, AutopilotTrade } from '../types/trading';
+import { AutopilotStatus, AutopilotTrade, AutopilotScanResult } from '../types/trading';
 import { TIMEFRAMES } from '../constants/trading';
 import {
   fetchTradingPairs,
@@ -54,6 +54,44 @@ const TradeRow: React.FC<{ trade: AutopilotTrade }> = ({ trade }) => {
       ) : (
         <span className="text-gray-400">since {formatTime(trade.openedAt)}</span>
       )}
+    </div>
+  );
+};
+
+const scanOutcomeLabel = (result: AutopilotScanResult): string => {
+  switch (result.status) {
+    case 'posted':
+      return 'posted ✓';
+    case 'open':
+      return 'trade open';
+    case 'cooldown':
+      return 'cooldown';
+    case 'error':
+      return `error: ${result.error ?? 'unknown'}`;
+    default:
+      return 'no signal';
+  }
+};
+
+// One line per coin: what the Worker saw on its latest scan and what it did about it
+const ScanRow: React.FC<{ result: AutopilotScanResult }> = ({ result }) => {
+  const dirColor =
+    result.direction === 'Long' ? 'text-green-600' : result.direction === 'Short' ? 'text-red-600' : 'text-gray-500';
+  const outcomeColor =
+    result.status === 'posted' ? 'text-green-700' : result.status === 'error' ? 'text-red-600' : 'text-gray-400';
+  return (
+    <div className="flex items-center justify-between gap-2 text-[11px]">
+      <span className="font-mono">
+        <span className="text-gray-700">{result.coin}</span>{' '}
+        {result.direction && (
+          <span className={dirColor}>
+            {result.direction.toUpperCase()} · {result.riskLevel}
+          </span>
+        )}
+      </span>
+      <span className={`${outcomeColor} truncate max-w-[55%]`} title={result.error}>
+        {scanOutcomeLabel(result)}
+      </span>
     </div>
   );
 };
@@ -331,6 +369,12 @@ const AutopilotPanel: React.FC = () => {
               <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
+          {status.lastScan && status.lastScan.results.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-medium text-gray-500">Last scan</p>
+              {status.lastScan.results.map((r) => <ScanRow key={r.coin} result={r} />)}
+            </div>
+          )}
           {openTrades.length > 0 && (
             <div className="space-y-0.5">
               <p className="text-[10px] font-medium text-gray-500">Open</p>
@@ -343,7 +387,7 @@ const AutopilotPanel: React.FC = () => {
               {recentTrades.slice(0, 5).map((t) => <TradeRow key={`${t.symbol}-${t.openedAt}`} trade={t} />)}
             </div>
           )}
-          {openTrades.length === 0 && recentTrades.length === 0 && (
+          {openTrades.length === 0 && recentTrades.length === 0 && !status.lastScan && (
             <p className="text-[10px] text-gray-400">
               Waiting for a Low-risk signal. {TELEGRAM_BOT_USERNAME} must be an admin of the channel.
             </p>
