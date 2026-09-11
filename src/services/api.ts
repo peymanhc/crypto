@@ -152,6 +152,21 @@ export const saveAutopilot = async (config: Omit<AutopilotConfig, 'updatedAt'>):
   return response.data.status;
 };
 
+// Closes every open autopilot trade (CLOSE + result reply), clears history, rescans if enabled
+export const resetAutopilot = async (channel: string): Promise<AutopilotStatus> => {
+  if (!TELEGRAM_WORKER_URL) {
+    throw new Error('Autopilot worker is not configured');
+  }
+  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/autopilot`, {
+    action: 'reset',
+    channel,
+  });
+  if (!response.data?.ok) {
+    throw new Error(response.data?.error ?? 'Reset failed');
+  }
+  return response.data.status;
+};
+
 export const fetchAutopilotStatus = async (channel: string): Promise<AutopilotStatus> => {
   if (!TELEGRAM_WORKER_URL) {
     throw new Error('Autopilot worker is not configured');

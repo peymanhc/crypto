@@ -74,7 +74,7 @@ export interface AutopilotConfig {
   updatedAt?: number;
 }
 
-export type AutopilotCloseReason = 'profit' | 'stop' | 'expired';
+export type AutopilotCloseReason = 'profit' | 'stop' | 'expired' | 'manual';
 
 export interface AutopilotTrade {
   symbol: string;
