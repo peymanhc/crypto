@@ -4,6 +4,7 @@ import TradingForm from './components/TradingForm';
 import Result from './components/Result';
 import MultiTimeframeAdvice from './components/MultiTimeframeAdvice';
 import SignalCard from './components/SignalCard';
+import AutopilotPanel from './components/AutopilotPanel';
 import { fetchTradingStrategy, fetchMultiTimeframeAdvice } from './services/api';
 import { AlertCircle, LineChart } from 'lucide-react';
 
@@ -52,10 +53,12 @@ function App() {
       </h1>
 
       <div className="flex-1 min-h-0 w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[auto,minmax(0,1fr)] gap-3 overflow-y-auto lg:overflow-hidden">
-        <div className="lg:col-span-3 min-h-0 flex flex-col gap-3 relative z-20">
+        <div className="lg:col-span-3 min-h-0 flex flex-col gap-3 relative z-20 lg:overflow-y-auto">
           <div className="flex-1 min-h-0">
             <TradingForm onSubmit={handleSubmit} isLoading={isLoading} />
           </div>
+
+          <AutopilotPanel />
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 shrink-0">
