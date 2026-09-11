@@ -33,11 +33,27 @@ export interface TradingResult {
   plan?: TradePlan;
 }
 
+// A CME Bitcoin futures weekend gap: Friday 17:00 ET close -> Sunday 18:00 ET open
+export interface CmeGap {
+  openedAt: number;
+  from: number;
+  to: number;
+  sizePct: number;
+  filled: boolean;
+  filledAt?: number;
+}
+
 export interface TimeframeAdvice {
   timeframe: string;
   label: string;
   recommendation: Recommendation;
   reason: string;
+  gaps?: CmeGap[];
+}
+
+export interface MultiTimeframeResult {
+  advices: TimeframeAdvice[];
+  cmeGaps: CmeGap[];
 }
 
 export interface TradingFormData {

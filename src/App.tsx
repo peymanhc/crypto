@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TradingResult, TradingFormData, TimeframeAdvice } from './types/trading';
+import { TradingResult, TradingFormData, TimeframeAdvice, CmeGap } from './types/trading';
 import TradingForm from './components/TradingForm';
 import Result from './components/Result';
 import MultiTimeframeAdvice from './components/MultiTimeframeAdvice';
@@ -10,6 +10,7 @@ import { AlertCircle, LineChart } from 'lucide-react';
 function App() {
   const [result, setResult] = useState<TradingResult | null>(null);
   const [advices, setAdvices] = useState<TimeframeAdvice[] | null>(null);
+  const [cmeGaps, setCmeGaps] = useState<CmeGap[]>([]);
   const [submitted, setSubmitted] = useState<TradingFormData | null>(null);
   const [submittedAt, setSubmittedAt] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +26,8 @@ function App() {
         fetchMultiTimeframeAdvice(formData.symbol),
       ]);
       setResult(data);
-      setAdvices(adviceData);
+      setAdvices(adviceData.advices);
+      setCmeGaps(adviceData.cmeGaps);
       setSubmitted(formData);
       setSubmittedAt(Date.now());
     } catch (err) {
@@ -81,9 +83,9 @@ function App() {
             : placeholder('The trade signal for the selected timeframe will appear here')}
         </div>
 
-        <div className="lg:col-span-12 min-h-0 lg:overflow-y-auto h-full">
+        <div className="lg:col-span-12 min-h-0  h-full">
           {advices && !error
-            ? <MultiTimeframeAdvice advices={advices} />
+            ? <MultiTimeframeAdvice advices={advices} cmeGaps={cmeGaps} symbol={submitted?.symbol ?? ''} />
             : placeholder('Long / Short advice per timeframe will appear here')}
         </div>
       </div>
