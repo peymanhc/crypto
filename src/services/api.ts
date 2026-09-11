@@ -2,11 +2,12 @@ import axios from 'axios';
 import {
   TradingResult,
   TradingFormData,
-  TimeframeAdvice,
   IchimokuValues,
   Recommendation,
   TradePlan,
   RiskLevel,
+  CmeGap,
+  MultiTimeframeResult,
 } from '../types/trading';
 
 const BINANCE_API_BASE = 'https://api.binance.com/api/v3';
@@ -34,16 +35,27 @@ const toCandles = (klines: RawKline[]): Candle[] =>
 export const fetchKlines = async (
   symbol: string,
   interval: string,
-  limit = 200
+  limit = 200,
+  endTime?: number
 ): Promise<RawKline[]> => {
   const response = await axios.get(`${BINANCE_API_BASE}/klines`, {
     params: {
       symbol: symbol.replace('/', ''),
       interval,
       limit,
+      ...(endTime ? { endTime } : {}),
     },
   });
   return response.data;
+};
+
+// "15m" -> ms of one candle; supports m / h / d / w suffixes
+export const timeframeMs = (timeframe: string): number => {
+  const amount = parseInt(timeframe, 10);
+  if (timeframe.endsWith('w')) return amount * 604_800_000;
+  if (timeframe.endsWith('d')) return amount * 86_400_000;
+  if (timeframe.endsWith('h')) return amount * 3_600_000;
+  return amount * 60_000;
 };
 
 interface ExchangeSymbol {
@@ -83,18 +95,20 @@ export const TELEGRAM_BOT_USERNAME = '@SignalPHC_bot';
 
 export const isTelegramConfigured = Boolean(TELEGRAM_BOT_TOKEN);
 
-export const sendSignalToTelegram = async (text: string, channel: string): Promise<void> => {
+// Resolves to the Telegram message_id so a later CLOSE can be posted as a reply to it
+export const sendSignalToTelegram = async (text: string, channel: string): Promise<number | null> => {
   if (!TELEGRAM_BOT_TOKEN) {
     throw new Error('Telegram is not configured');
   }
   const trimmed = channel.trim();
   // Accept "@name", "name", a t.me link, or a numeric -100... id for private channels
   const bare = trimmed.replace(/^https?:\/\/t\.me\//i, '');
-  const chatId = /^-?\d+$/.test(bare) ? bare : bare.startsWith('@') ? bare : `@${bare}`;
-  await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  const chatId = /^-?\d+$/.test(bare) || bare.startsWith('@') ? bare : `@${bare}`;
+  const response = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     chat_id: chatId,
     text,
   });
+  return response.data?.result?.message_id ?? null;
 };
 
 // Optional Cloudflare Worker (see telegram-worker/) that fires a delayed message
@@ -103,50 +117,130 @@ const TELEGRAM_WORKER_URL = "https://crypto-signal-scheduler.peymanhc.workers.de
 
 export const isAutoCloseAvailable = Boolean(TELEGRAM_WORKER_URL);
 
-export const scheduleTelegramMessage = async (
-  channel: string,
-  text: string,
-  delaySeconds: number
-): Promise<void> => {
+export interface TradeContext {
+  symbol: string;
+  base: string;
+  direction: Recommendation;
+  entry: number;
+  leverage: number;
+}
+
+export interface CloseSchedule {
+  text: string;
+  // time mode: post after a fixed delay (one candle)
+  delaySeconds?: number;
+  // profit mode: the Worker polls the price and posts once leveraged PnL >= targetPct
+  targetPct?: number;
+  trade?: TradeContext;
+  // Post the CLOSE as a reply to the original signal message
+  replyToMessageId?: number | null;
+}
+
+export const scheduleCloseMessage = async (channel: string, schedule: CloseSchedule): Promise<void> => {
   if (!TELEGRAM_WORKER_URL) {
     throw new Error('Auto-close worker is not configured');
   }
   const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/schedule`, {
     channel,
-    text,
-    delaySeconds,
+    text: schedule.text,
+    ...(schedule.delaySeconds !== undefined ? { delaySeconds: schedule.delaySeconds } : {}),
+    ...(schedule.targetPct !== undefined ? { targetPct: schedule.targetPct } : {}),
+    ...(schedule.trade ? { trade: schedule.trade } : {}),
+    ...(schedule.replyToMessageId ? { replyToMessageId: schedule.replyToMessageId } : {}),
   });
   if (!response.data?.ok) {
     throw new Error('Scheduling failed');
   }
 };
 
-export interface ProfitCloseParams {
-  symbol: string;
-  direction: 'Long' | 'Short';
-  entry: number;
-  leverage: number;
-  targetPct: number;
-}
+// ---------- CME weekend gaps ----------
+// CME Bitcoin futures close Friday 17:00 ET and reopen Sunday 18:00 ET. Spot keeps
+// trading over the weekend, so the Sunday reopen usually "gaps" away from the Friday
+// close; price tends to revisit (fill) that level, which is what the gap-fill signal trades.
 
-// Server-side price watch: the Worker polls Binance every 3s and posts `text`
-// once the leveraged PnL reaches targetPct (watch expires after 24h)
-export const scheduleProfitClose = async (
-  channel: string,
-  text: string,
-  profitTarget: ProfitCloseParams
-): Promise<void> => {
-  if (!TELEGRAM_WORKER_URL) {
-    throw new Error('Auto-close worker is not configured');
+const NY_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  weekday: 'short',
+  hour: 'numeric',
+  hour12: false,
+});
+
+const nyWeekdayHour = (timestamp: number): { weekday: string; hour: number } => {
+  const parts = NY_FORMAT.formatToParts(new Date(timestamp));
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? '';
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
+  return { weekday, hour: hour === 24 ? 0 : hour };
+};
+
+// Gaps smaller than this are noise, not tradeable
+const MIN_GAP_PCT = 0.05;
+
+// Scans ~7 months of hourly candles (5 pages x 1000) for weekend gaps, newest first
+export const fetchCmeGaps = async (symbol: string): Promise<CmeGap[]> => {
+  const pages: RawKline[][] = [];
+  let endTime: number | undefined;
+  for (let i = 0; i < 5; i++) {
+    const page = await fetchKlines(symbol, '1h', 1000, endTime);
+    if (!page.length) break;
+    pages.unshift(page);
+    endTime = page[0][0] - 1;
+    if (page.length < 1000) break;
   }
-  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/schedule`, {
-    channel,
-    text,
-    profitTarget,
-  });
-  if (!response.data?.ok) {
-    throw new Error('Scheduling failed');
+  const candles = toCandles(pages.flat());
+
+  const gaps: CmeGap[] = [];
+  let fridayClose: number | null = null;
+  for (let i = 0; i < candles.length; i++) {
+    const { weekday, hour } = nyWeekdayHour(candles[i].openTime);
+    // The 16:00 ET hourly candle closes at 17:00 ET = the CME Friday close
+    if (weekday === 'Fri' && hour === 16) fridayClose = candles[i].close;
+    if (weekday === 'Sun' && hour === 18 && fridayClose !== null) {
+      const from = fridayClose;
+      const to = candles[i].open;
+      const sizePct = ((to - from) / from) * 100;
+      if (Math.abs(sizePct) >= MIN_GAP_PCT) {
+        let filled = false;
+        let filledAt: number | undefined;
+        for (let j = i; j < candles.length; j++) {
+          const candle = candles[j];
+          if ((to > from && candle.low <= from) || (to < from && candle.high >= from)) {
+            filled = true;
+            filledAt = candle.openTime;
+            break;
+          }
+        }
+        gaps.push({ openedAt: candles[i].openTime, from, to, sizePct, filled, filledAt });
+      }
+      fridayClose = null;
+    }
   }
+  return gaps.reverse();
+};
+
+// Trade back toward the unfilled gap level: TP is the gap, SL is half that distance
+// the other way (2:1 reward/risk). Returns null when price already sits on the gap.
+export const buildGapFillPlan = (gap: CmeGap, currentPrice: number): TradePlan | null => {
+  const target = gap.from;
+  const entry = currentPrice;
+  const distance = Math.abs(entry - target);
+  if (distance / entry < 0.0005) return null;
+
+  const direction: Recommendation = target < entry ? 'Short' : 'Long';
+  const risk = distance / 2;
+  const stopLoss = direction === 'Long' ? entry - risk : entry + risk;
+  const riskPct = (risk / entry) * 100;
+
+  let leverage: number;
+  if (riskPct <= 0.5) leverage = 10;
+  else if (riskPct <= 1) leverage = 7;
+  else if (riskPct <= 2) leverage = 5;
+  else if (riskPct <= 3.5) leverage = 3;
+  else if (riskPct <= 5) leverage = 2;
+  else leverage = 1;
+
+  const riskLevel: RiskLevel = riskPct <= 1 ? 'Low' : riskPct <= 3 ? 'Medium' : 'High';
+
+  return { direction, riskLevel, leverage, entry, takeProfits: [target], stopLoss, score: 0 };
 };
 
 export const fetchCurrentPrice = async (symbol: string): Promise<number> => {
@@ -521,6 +615,7 @@ export const ADVICE_TIMEFRAMES = [
   { value: '1h', label: '1 hour' },
   { value: '4h', label: '4 hour' },
   { value: '1d', label: '1 day' },
+  { value: '1w', label: '1 week' },
 ];
 
 // Binance has no 45m interval: 45m candles are built from three aligned 15m candles
@@ -582,29 +677,42 @@ const buildReason = (analysis: Analysis): string => {
   );
 };
 
-export const fetchMultiTimeframeAdvice = async (symbol: string): Promise<TimeframeAdvice[]> => {
-  const settled = await Promise.allSettled(
-    ADVICE_TIMEFRAMES.map(async ({ value }) => {
-      const candles = await fetchCandlesForTimeframe(symbol, value);
-      return analyzeCandles(candles);
-    })
-  );
+export const fetchMultiTimeframeAdvice = async (symbol: string): Promise<MultiTimeframeResult> => {
+  const [settled, cmeGaps] = await Promise.all([
+    Promise.allSettled(
+      ADVICE_TIMEFRAMES.map(async ({ value }) => {
+        const candles = await fetchCandlesForTimeframe(symbol, value);
+        return analyzeCandles(candles);
+      })
+    ),
+    // Gap history is a bonus: a failure here must not break the advice
+    fetchCmeGaps(symbol).catch(() => [] as CmeGap[]),
+  ]);
 
-  return settled.map((result, index) => {
-    const { value, label } = ADVICE_TIMEFRAMES[index];
-    if (result.status === 'rejected') {
+  const now = Date.now();
+  return {
+    advices: settled.map((result, index) => {
+      const { value, label } = ADVICE_TIMEFRAMES[index];
+      // Gaps that opened inside the ~200-candle window this timeframe's analysis looks at
+      const windowStart = now - timeframeMs(value) * 200;
+      const gaps = cmeGaps.filter((gap) => gap.openedAt >= windowStart);
+      if (result.status === 'rejected') {
+        return {
+          timeframe: value,
+          label,
+          recommendation: 'Neutral' as Recommendation,
+          reason: 'Could not load data for this timeframe.\nTry again in a moment.',
+          gaps,
+        };
+      }
       return {
         timeframe: value,
         label,
-        recommendation: 'Neutral' as Recommendation,
-        reason: 'Could not load data for this timeframe.\nTry again in a moment.',
+        recommendation: result.value.recommendation,
+        reason: buildReason(result.value),
+        gaps,
       };
-    }
-    return {
-      timeframe: value,
-      label,
-      recommendation: result.value.recommendation,
-      reason: buildReason(result.value),
-    };
-  });
+    }),
+    cmeGaps,
+  };
 };

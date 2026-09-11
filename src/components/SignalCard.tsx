@@ -7,8 +7,7 @@ import {
   isTelegramConfigured,
   TELEGRAM_BOT_USERNAME,
   isAutoCloseAvailable,
-  scheduleTelegramMessage,
-  scheduleProfitClose,
+  scheduleCloseMessage,
 } from '../services/api';
 import { Zap, ShieldCheck, ShieldAlert, ShieldX, Timer, TrendingUp, TrendingDown, RefreshCw, Copy, Check, Send } from 'lucide-react';
 
@@ -34,6 +33,7 @@ const formatPrice = (value?: number): string => {
 
 const timeframeMs = (timeframe: string): number => {
   const amount = parseInt(timeframe, 10);
+  if (timeframe.endsWith('w')) return amount * 604_800_000;
   if (timeframe.endsWith('d')) return amount * 86_400_000;
   if (timeframe.endsWith('h')) return amount * 3_600_000;
   return amount * 60_000; // minutes
@@ -160,23 +160,27 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     if (!channel.trim() || tgState?.status === 'sending') return;
     setTgState({ action, status: 'sending' });
     try {
-      await sendSignalToTelegram(text, channel);
+      const messageId = await sendSignalToTelegram(text, channel);
       setTgState({ action, status: 'sent' });
       // The Worker holds the timer / price-watch server-side, so it fires even if the browser closes
       if (action === 'signal' && closeMode !== 'none' && isAutoCloseAvailable) {
         try {
-          const closeText = `CLOSE $${baseAsset(symbol)}`;
-          if (closeMode === 'time') {
-            await scheduleTelegramMessage(channel, closeText, Math.max(1, Math.round(durationMs / 1000)));
-          } else {
-            await scheduleProfitClose(channel, closeText, {
-              symbol: symbol.replace('/', ''),
-              direction: plan.direction as 'Long' | 'Short',
-              entry: plan.entry,
-              leverage: plan.leverage,
-              targetPct: clampedProfitTarget(),
-            });
-          }
+          const trade = {
+            symbol: symbol.replace('/', ''),
+            base: baseAsset(symbol),
+            direction: plan.direction,
+            entry: plan.entry,
+            leverage: plan.leverage,
+          };
+          await scheduleCloseMessage(channel, {
+            text: `CLOSE $${baseAsset(symbol)}`,
+            ...(closeMode === 'time'
+              ? { delaySeconds: Math.max(1, Math.round(durationMs / 1000)) }
+              : { targetPct: clampedProfitTarget() }),
+            trade,
+            // The CLOSE lands as a reply to the signal it belongs to
+            replyToMessageId: messageId,
+          });
           setAutoCloseStatus('scheduled');
         } catch {
           setAutoCloseStatus('failed');

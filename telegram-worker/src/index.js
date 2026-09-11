@@ -68,12 +68,17 @@ export class CloseScheduler {
     return null;
   }
 
-  async sendTelegram(chatId, text) {
+  // replyToMessageId threads the CLOSE under the original signal post
+  async sendTelegram(chatId, text, replyToMessageId) {
     const token = (this.env.TELEGRAM_BOT_TOKEN ?? '').trim();
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+      }),
     });
     const body = await response.text();
     console.log('telegram send', { chatId, status: response.status, body: body.slice(0, 300) });
@@ -95,7 +100,7 @@ export class CloseScheduler {
             const pnlPct = ((price - job.entry) / job.entry) * 100 * job.leverage * dir;
             if (pnlPct >= job.targetPct) {
               console.log('profit target hit', { symbol: job.symbol, price, pnlPct: pnlPct.toFixed(3) });
-              await this.sendTelegram(job.chatId, job.text);
+              await this.sendTelegram(job.chatId, job.text, job.replyToMessageId);
               await this.state.storage.deleteAll();
               return;
             }
@@ -118,7 +123,7 @@ export class CloseScheduler {
 
     // time mode
     try {
-      await this.sendTelegram(job.chatId, job.text);
+      await this.sendTelegram(job.chatId, job.text, job.replyToMessageId);
     } catch (err) {
       console.log('alarm error', String(err));
     }
@@ -171,14 +176,20 @@ export default {
       return json({ ok: false, error: 'invalid JSON' }, 400);
     }
 
-    const { channel, text, delaySeconds, profitTarget } = body ?? {};
+    // Two request shapes are accepted:
+    //   current: { channel, text, delaySeconds? | targetPct?, trade?, replyToMessageId? }
+    //   legacy:  { channel, text, delaySeconds? | profitTarget: { symbol, direction, entry, leverage, targetPct } }
+    const { channel, text, delaySeconds, profitTarget, targetPct, trade, replyToMessageId } = body ?? {};
     if (!channel || typeof text !== 'string' || !text.trim() || text.length > 4096) {
       return json({ ok: false, error: 'bad request' }, 400);
     }
+    const replyTo = Number.isInteger(replyToMessageId) && replyToMessageId > 0 ? replyToMessageId : undefined;
+
+    const profitSpec = profitTarget ?? (targetPct !== undefined && trade ? { ...trade, targetPct } : null);
 
     let job;
-    if (profitTarget) {
-      const { symbol, direction, entry, leverage, targetPct } = profitTarget;
+    if (profitSpec) {
+      const { symbol, direction, entry, leverage, targetPct } = profitSpec;
       const entryNum = Number(entry);
       const levNum = Number(leverage);
       const pctNum = Number(targetPct);
@@ -202,6 +213,7 @@ export default {
         leverage: levNum,
         targetPct: pctNum,
         expiresAt: Date.now() + PROFIT_WATCH_MAX_MS,
+        replyToMessageId: replyTo,
       };
     } else {
       const delay = Number(delaySeconds);
@@ -213,6 +225,7 @@ export default {
         chatId: normalizeChannel(channel),
         text: text.trim(),
         sendAt: Date.now() + delay * 1000,
+        replyToMessageId: replyTo,
       };
     }
 
