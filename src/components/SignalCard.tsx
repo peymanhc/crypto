@@ -381,7 +381,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
                     checked={closeMode === 'profit'}
                     onChange={(e) => handleCloseModeToggle('profit', e.target.checked)}
                   />
-                  Auto-send CLOSE ${baseAsset(symbol)} at leveraged profit ≥
+                  Auto-reply with the profit % once leveraged profit ≥
                   {closeMode === 'profit' && (
                     <input
                       type="number"

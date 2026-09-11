@@ -20,6 +20,9 @@ const json = (body, status = 200) =>
     headers: { ...CORS_HEADERS, 'content-type': 'application/json' },
   });
 
+// "✅ Closed with +2.35% profit" — leveraged PnL only, deliberately without the token
+const formatProfitMessage = (pnlPct) => `✅ Closed with +${pnlPct.toFixed(2)}% profit`;
+
 // Accept "@name", "name", a t.me link, or a numeric -100... id
 const normalizeChannel = (channel) => {
   const bare = String(channel).trim().replace(/^https?:\/\/t\.me\//i, '');
@@ -100,7 +103,9 @@ export class CloseScheduler {
             const pnlPct = ((price - job.entry) / job.entry) * 100 * job.leverage * dir;
             if (pnlPct >= job.targetPct) {
               console.log('profit target hit', { symbol: job.symbol, price, pnlPct: pnlPct.toFixed(3) });
-              await this.sendTelegram(job.chatId, job.text, job.replyToMessageId);
+              // The reply sits under the signal post, so the coin is already clear —
+              // report only the result, no token name
+              await this.sendTelegram(job.chatId, formatProfitMessage(pnlPct), job.replyToMessageId);
               await this.state.storage.deleteAll();
               return;
             }
