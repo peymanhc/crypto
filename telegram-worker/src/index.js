@@ -247,11 +247,12 @@ export class Autopilot {
   }
 
   async status() {
-    const [config, trades, lastScanAt, lastError] = await Promise.all([
+    const [config, trades, lastScanAt, lastError, lastScan] = await Promise.all([
       this.state.storage.get('config'),
       this.state.storage.get('trades'),
       this.state.storage.get('lastScanAt'),
       this.state.storage.get('lastError'),
+      this.state.storage.get('lastScan'),
     ]);
     return {
       config: config ?? null,
@@ -259,6 +260,7 @@ export class Autopilot {
       recentTrades: trades?.recent ?? [],
       lastScanAt: lastScanAt ?? null,
       lastError: lastError ?? null,
+      lastScan: lastScan ?? null,
     };
   }
 
@@ -280,21 +282,25 @@ export class Autopilot {
     if (!config?.enabled) return;
 
     const trades = (await this.state.storage.get('trades')) ?? { open: [], recent: [] };
-    let lastError = null;
     try {
       await this.checkOpenTrades(config, trades);
       const lastScanAt = (await this.state.storage.get('lastScanAt')) ?? 0;
       if (Date.now() - lastScanAt >= AUTOPILOT_SCAN_MS) {
         // Stamp first so a failing Telegram call cannot turn the 5-minute scan into a 10-second hammer
-        await this.state.storage.put('lastScanAt', Date.now());
-        await this.scanForSignals(config, trades);
+        const at = Date.now();
+        await this.state.storage.put('lastScanAt', at);
+        const results = await this.scanForSignals(config, trades);
+        await this.state.storage.put('lastScan', { at, results });
+        // The per-coin results carry their own errors; a completed scan clears the tick-level one
+        const failed = results.filter((r) => r.status === 'error');
+        await this.state.storage.put('lastError', failed.length ? `${failed[0].coin}: ${failed[0].error}` : null);
       }
     } catch (err) {
-      lastError = String(err);
-      console.log('autopilot error', { channel: config.channel, error: lastError });
+      // Kept until the next scan completes, so a failure is visible in the UI
+      await this.state.storage.put('lastError', String(err));
+      console.log('autopilot error', { channel: config.channel, error: String(err) });
     }
     await this.state.storage.put('trades', trades);
-    await this.state.storage.put('lastError', lastError);
     await this.state.storage.setAlarm(Date.now() + AUTOPILOT_TICK_MS);
   }
 
@@ -337,36 +343,56 @@ export class Autopilot {
     trades.recent = trades.recent.slice(0, AUTOPILOT_RECENT_KEPT);
   }
 
+  // Returns one result per coin so the UI can show why a coin did or did not post
   async scanForSignals(config, trades) {
     const chatId = normalizeChannel(config.channel);
     // After a close, wait at least one candle (min 30 min) before re-entering the same coin
     const cooldownMs = Math.max(timeframeMs(config.timeframe), 30 * 60_000);
     const now = Date.now();
+    const results = [];
 
     for (const coin of config.coins) {
       const symbol = coin.replace('/', '');
-      if (trades.open.some((t) => t.symbol === symbol)) continue;
+      if (trades.open.some((t) => t.symbol === symbol)) {
+        results.push({ coin, status: 'open' });
+        continue;
+      }
       const lastClosed = trades.recent.find((t) => t.symbol === symbol);
-      if (lastClosed && now - lastClosed.closedAt < cooldownMs) continue;
+      if (lastClosed && now - lastClosed.closedAt < cooldownMs) {
+        results.push({ coin, status: 'cooldown' });
+        continue;
+      }
 
-      const candles = await fetchCandlesForTimeframe(symbol, config.timeframe);
-      const plan = buildTradePlan(analyzeCandles(candles));
-      if (plan.direction === 'Neutral' || plan.riskLevel !== 'Low') continue;
+      // One coin failing (exchange or Telegram) must not stop the others
+      try {
+        const candles = await fetchCandlesForTimeframe(symbol, config.timeframe);
+        const plan = buildTradePlan(analyzeCandles(candles));
+        const base = { coin, direction: plan.direction, riskLevel: plan.riskLevel, score: plan.score };
+        if (plan.direction === 'Neutral' || plan.riskLevel !== 'Low') {
+          results.push({ ...base, status: 'no-signal' });
+          continue;
+        }
 
-      const messageId = await sendTelegram(this.env, chatId, formatSignalText(coin, plan));
-      console.log('autopilot signal', { symbol, direction: plan.direction, entry: plan.entry, messageId });
-      trades.open.push({
-        symbol,
-        base: baseAsset(coin),
-        direction: plan.direction,
-        entry: plan.entry,
-        leverage: plan.leverage,
-        stopLoss: plan.stopLoss,
-        targetPct: config.targetPct,
-        openedAt: now,
-        messageId,
-      });
+        const messageId = await sendTelegram(this.env, chatId, formatSignalText(coin, plan));
+        console.log('autopilot signal', { symbol, direction: plan.direction, entry: plan.entry, messageId });
+        trades.open.push({
+          symbol,
+          base: baseAsset(coin),
+          direction: plan.direction,
+          entry: plan.entry,
+          leverage: plan.leverage,
+          stopLoss: plan.stopLoss,
+          targetPct: config.targetPct,
+          openedAt: now,
+          messageId,
+        });
+        results.push({ ...base, status: 'posted' });
+      } catch (err) {
+        console.log('autopilot coin error', { symbol, error: String(err) });
+        results.push({ coin, status: 'error', error: String(err) });
+      }
     }
+    return results;
   }
 }
 

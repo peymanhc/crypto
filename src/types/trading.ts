@@ -92,10 +92,23 @@ export interface AutopilotTrade {
   reason?: AutopilotCloseReason;
 }
 
+export type AutopilotScanOutcome = 'posted' | 'no-signal' | 'open' | 'cooldown' | 'error';
+
+// What the Worker concluded for one coin in its latest scan
+export interface AutopilotScanResult {
+  coin: string;
+  status: AutopilotScanOutcome;
+  direction?: Recommendation;
+  riskLevel?: RiskLevel;
+  score?: number;
+  error?: string;
+}
+
 export interface AutopilotStatus {
   config: AutopilotConfig | null;
   openTrades: AutopilotTrade[];
   recentTrades: AutopilotTrade[];
   lastScanAt: number | null;
   lastError: string | null;
+  lastScan?: { at: number; results: AutopilotScanResult[] } | null;
 }
