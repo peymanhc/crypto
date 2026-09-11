@@ -60,3 +60,42 @@ export interface TradingFormData {
   symbol: string;
   timeframe: string;
 }
+
+// ---------- Autopilot (server-side, runs in the Cloudflare Worker) ----------
+
+export interface AutopilotConfig {
+  enabled: boolean;
+  channel: string;
+  // "BASE/QUOTE" pairs, at most 4
+  coins: string[];
+  timeframe: string;
+  // Leveraged profit % at which the Worker posts CLOSE $COIN
+  targetPct: number;
+  updatedAt?: number;
+}
+
+export type AutopilotCloseReason = 'profit' | 'stop' | 'expired';
+
+export interface AutopilotTrade {
+  symbol: string;
+  base: string;
+  direction: Recommendation;
+  entry: number;
+  leverage: number;
+  stopLoss: number;
+  targetPct: number;
+  openedAt: number;
+  messageId: number | null;
+  closedAt?: number;
+  exitPrice?: number;
+  pnlPct?: number;
+  reason?: AutopilotCloseReason;
+}
+
+export interface AutopilotStatus {
+  config: AutopilotConfig | null;
+  openTrades: AutopilotTrade[];
+  recentTrades: AutopilotTrade[];
+  lastScanAt: number | null;
+  lastError: string | null;
+}
