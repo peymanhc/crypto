@@ -5,11 +5,12 @@ import {
   fetchTradingPairs,
   saveAutopilot,
   fetchAutopilotStatus,
+  resetAutopilot,
   isAutoCloseAvailable,
   isTelegramConfigured,
   TELEGRAM_BOT_USERNAME,
 } from '../services/api';
-import { Bot, X, RefreshCw } from 'lucide-react';
+import { Bot, X, RefreshCw, RotateCcw } from 'lucide-react';
 
 const MAX_COINS = 4;
 const MAX_SUGGESTIONS = 30;
@@ -220,6 +221,24 @@ const AutopilotPanel: React.FC = () => {
     }
   };
 
+  const [resetting, setResetting] = useState(false);
+  const handleReset = async () => {
+    const openCount = status?.openTrades.length ?? 0;
+    const message = openCount
+      ? `Close ${openCount} open trade${openCount === 1 ? '' : 's'} in the channel (CLOSE + result reply) and start over?`
+      : 'Clear the autopilot history and start over?';
+    if (!window.confirm(message)) return;
+    setResetting(true);
+    setError(null);
+    try {
+      setStatus(await resetAutopilot(channel.trim()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reset failed');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleToggle = (checked: boolean) => {
     if (checked) {
       save(true);
@@ -360,14 +379,26 @@ const AutopilotPanel: React.FC = () => {
               {status.lastScanAt ? `Last scan ${formatTime(status.lastScanAt)}` : 'No scan yet'}
               {status.lastError && <span className="text-red-500"> · {status.lastError}</span>}
             </span>
-            <button
-              type="button"
-              onClick={() => loadStatus(false)}
-              disabled={refreshing}
-              className="flex items-center gap-1 text-gray-400 hover:text-gray-600"
-            >
-              <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={resetting}
+                title="Close all open trades and start over"
+                className="flex items-center gap-1 text-red-400 hover:text-red-600 disabled:opacity-50"
+              >
+                <RotateCcw className={`w-3 h-3 ${resetting ? 'animate-spin' : ''}`} />
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => loadStatus(false)}
+                disabled={refreshing}
+                className="flex items-center gap-1 text-gray-400 hover:text-gray-600"
+              >
+                <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </span>
           </div>
           {status.lastScan && status.lastScan.results.length > 0 && (
             <div className="space-y-0.5">

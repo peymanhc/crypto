@@ -59,6 +59,7 @@ const signed = (pct) => `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
 // Replies sit under the signal post, so the coin is already clear — results
 // deliberately carry no token name
 const formatResultMessage = (pnlPct, reason) => {
+  if (reason === 'manual') return pnlPct === null ? '↩️ Closed manually' : `↩️ Closed manually: ${signed(pnlPct)}`;
   if (reason === 'stop') return `🛑 Stop loss hit: ${signed(pnlPct)}`;
   if (reason === 'expired') return `⏱ Closed after 24h: ${signed(pnlPct)}`;
   return `✅ Closed with ${signed(pnlPct)} profit`;
@@ -243,7 +244,37 @@ export class Autopilot {
     if (url.pathname === '/status') {
       return json({ ok: true, status: await this.status() });
     }
+    if (url.pathname === '/reset') {
+      return this.reset();
+    }
     return json({ ok: false, error: 'not found' }, 404);
+  }
+
+  // Start over: close every open trade in the channel (CLOSE + result reply), forget the
+  // history and cooldowns, and if the autopilot is on, scan again right away
+  async reset() {
+    const config = await this.state.storage.get('config');
+    const trades = (await this.state.storage.get('trades')) ?? { open: [], recent: [] };
+    const failures = [];
+    if (config) {
+      const chatId = normalizeChannel(config.channel);
+      for (const trade of trades.open) {
+        const price = await fetchPrice(trade.symbol);
+        const pnlPct = price === null ? null : leveragedPnlPct(trade.direction, trade.entry, trade.leverage, price);
+        try {
+          await postClose(this.env, chatId, trade.base, pnlPct, 'manual', trade.messageId);
+        } catch (err) {
+          failures.push(`${trade.base}: ${String(err)}`);
+        }
+      }
+    }
+    await this.state.storage.put('trades', { open: [], recent: [] });
+    await this.state.storage.delete(['lastScan', 'lastScanAt']);
+    await this.state.storage.put('lastError', failures.length ? `reset: ${failures.join('; ')}` : null);
+    if (config?.enabled) {
+      await this.state.storage.setAlarm(Date.now() + 1_000);
+    }
+    return json({ ok: true, status: await this.status() });
   }
 
   async status() {
@@ -463,6 +494,11 @@ export default {
           body = await request.json();
         } catch {
           return json({ ok: false, error: 'invalid JSON' }, 400);
+        }
+        if (body?.action === 'reset') {
+          if (!body.channel || typeof body.channel !== 'string') return json({ ok: false, error: 'channel required' }, 400);
+          const stub = env.AUTOPILOT.get(env.AUTOPILOT.idFromName(normalizeChannel(body.channel)));
+          return stub.fetch('https://do/reset', { method: 'POST' });
         }
         const { config, error } = validateAutopilotConfig(body);
         if (error) return json({ ok: false, error }, 400);
