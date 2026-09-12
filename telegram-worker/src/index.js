@@ -35,6 +35,16 @@ const AUTOPILOT_MAX_COINS = 4;
 const AUTOPILOT_RECENT_KEPT = 10;
 const AUTOPILOT_CLOSE_RETRIES = 3;
 const AUTOPILOT_TIMEFRAMES = ['1m', '5m', '15m', '30m', '45m', '1h', '4h', '1d'];
+// Hyperliquid pump-short strategy: every 30 min, short (4x) any perp up more than 150% in 24h
+const HL_SCAN_MS = 30 * 60_000;
+const HL_PUMP_PCT = 150;
+const HL_LEVERAGE = 4;
+const HL_MIN_DAY_VOLUME_USD = 50_000; // skip dead markets whose "pump" is one stray trade
+const HL_COOLDOWN_MS = 24 * 3_600_000; // the 24h change stays elevated for a day; one short per pump
+const HL_TP_PCTS = [10, 20]; // take profits 10% and 20% below entry
+const HL_SL_PCT = 10; // stop 10% above entry
+const HL_INFO_URL = 'https://api.hyperliquid.xyz/info';
+
 const RISK_LEVELS = ['Low', 'Medium', 'High'];
 // Configs saved before the risk filter existed behave as they did: Low only
 const allowedRiskLevels = (config) =>
@@ -129,6 +139,46 @@ async function fetchPrice(symbol) {
   }
   return null;
 }
+
+// Hyperliquid perps with their 24h change, delisted and near-zero-volume markets excluded
+async function fetchHyperliquidMarkets() {
+  const res = await fetch(HL_INFO_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
+  });
+  if (!res.ok) throw new Error(`hyperliquid ${res.status}`);
+  const [meta, ctxs] = await res.json();
+  const markets = [];
+  (meta?.universe ?? []).forEach((asset, i) => {
+    const ctx = ctxs?.[i];
+    const mark = parseFloat(ctx?.markPx);
+    const prev = parseFloat(ctx?.prevDayPx);
+    const volume = parseFloat(ctx?.dayNtlVlm);
+    if (asset.isDelisted || !Number.isFinite(mark) || !Number.isFinite(prev) || prev <= 0) return;
+    markets.push({ name: asset.name, markPx: mark, changePct: (mark / prev - 1) * 100, volume: Number.isFinite(volume) ? volume : 0 });
+  });
+  return markets;
+}
+
+async function fetchHyperliquidPrice(coin) {
+  try {
+    const res = await fetch(HL_INFO_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'allMids' }),
+    });
+    if (!res.ok) return null;
+    const price = parseFloat((await res.json())?.[coin]);
+    return Number.isFinite(price) ? price : null;
+  } catch {
+    return null;
+  }
+}
+
+// Open trades know where they were opened; Hyperliquid perps are not on MEXC/Bybit
+const fetchTradePrice = (trade) =>
+  trade.venue === 'hyperliquid' ? fetchHyperliquidPrice(trade.symbol) : fetchPrice(trade.symbol);
 
 const MEXC_INTERVALS = { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '60m', '4h': '4h', '1d': '1d', '1w': '1W' };
 const BYBIT_INTERVALS = { '1m': '1', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '4h': '240', '1d': 'D', '1w': 'W' };
@@ -263,7 +313,7 @@ export class Autopilot {
     if (config) {
       const chatId = normalizeChannel(config.channel);
       for (const trade of trades.open) {
-        const price = await fetchPrice(trade.symbol);
+        const price = await fetchTradePrice(trade);
         const pnlPct = price === null ? null : leveragedPnlPct(trade.direction, trade.entry, trade.leverage, price);
         try {
           await postClose(this.env, chatId, trade.base, pnlPct, 'manual', trade.messageId);
@@ -273,7 +323,7 @@ export class Autopilot {
       }
     }
     await this.state.storage.put('trades', { open: [], recent: [] });
-    await this.state.storage.delete(['lastScan', 'lastScanAt']);
+    await this.state.storage.delete(['lastScan', 'lastScanAt', 'lastHlScan', 'lastHlScanAt']);
     await this.state.storage.put('lastError', failures.length ? `reset: ${failures.join('; ')}` : null);
     if (config?.enabled) {
       await this.state.storage.setAlarm(Date.now() + 1_000);
@@ -282,12 +332,13 @@ export class Autopilot {
   }
 
   async status() {
-    const [config, trades, lastScanAt, lastError, lastScan] = await Promise.all([
+    const [config, trades, lastScanAt, lastError, lastScan, lastHlScan] = await Promise.all([
       this.state.storage.get('config'),
       this.state.storage.get('trades'),
       this.state.storage.get('lastScanAt'),
       this.state.storage.get('lastError'),
       this.state.storage.get('lastScan'),
+      this.state.storage.get('lastHlScan'),
     ]);
     return {
       config: config ?? null,
@@ -296,6 +347,7 @@ export class Autopilot {
       lastScanAt: lastScanAt ?? null,
       lastError: lastError ?? null,
       lastScan: lastScan ?? null,
+      lastHlScan: lastHlScan ?? null,
     };
   }
 
@@ -330,6 +382,14 @@ export class Autopilot {
         const failed = results.filter((r) => r.status === 'error');
         await this.state.storage.put('lastError', failed.length ? `${failed[0].coin}: ${failed[0].error}` : null);
       }
+      if (config.hlPumpShort) {
+        const lastHlScanAt = (await this.state.storage.get('lastHlScanAt')) ?? 0;
+        if (Date.now() - lastHlScanAt >= HL_SCAN_MS) {
+          const at = Date.now();
+          await this.state.storage.put('lastHlScanAt', at);
+          await this.state.storage.put('lastHlScan', { at, ...(await this.scanHyperliquidPumps(config, trades)) });
+        }
+      }
     } catch (err) {
       // Kept until the next scan completes, so a failure is visible in the UI
       await this.state.storage.put('lastError', String(err));
@@ -343,7 +403,7 @@ export class Autopilot {
     const chatId = normalizeChannel(config.channel);
     const stillOpen = [];
     for (const trade of trades.open) {
-      const price = await fetchPrice(trade.symbol);
+      const price = await fetchTradePrice(trade);
       if (price === null) {
         stillOpen.push(trade);
         continue;
@@ -429,12 +489,76 @@ export class Autopilot {
     }
     return results;
   }
+
+  // Mean-reversion short on Hyperliquid pumps: any perp up more than 150% in 24h gets a
+  // 4x SHORT signal (TP 10% / 20% below, SL 10% above); tracked like every other trade
+  async scanHyperliquidPumps(config, trades) {
+    const chatId = normalizeChannel(config.channel);
+    const now = Date.now();
+    let markets;
+    try {
+      markets = await fetchHyperliquidMarkets();
+    } catch (err) {
+      return { checked: 0, pumps: [], error: String(err) };
+    }
+    const pumps = [];
+    for (const market of markets) {
+      if (market.changePct < HL_PUMP_PCT) continue;
+      const entry = { coin: market.name, changePct: market.changePct };
+      if (market.volume < HL_MIN_DAY_VOLUME_USD) {
+        pumps.push({ ...entry, status: 'low-volume' });
+        continue;
+      }
+      if (trades.open.some((t) => t.venue === 'hyperliquid' && t.symbol === market.name)) {
+        pumps.push({ ...entry, status: 'open' });
+        continue;
+      }
+      const lastClosed = trades.recent.find((t) => t.venue === 'hyperliquid' && t.symbol === market.name);
+      if (lastClosed && now - lastClosed.closedAt < HL_COOLDOWN_MS) {
+        pumps.push({ ...entry, status: 'cooldown' });
+        continue;
+      }
+      const price = market.markPx;
+      const plan = {
+        direction: 'Short',
+        riskLevel: 'High',
+        leverage: HL_LEVERAGE,
+        entry: price,
+        takeProfits: HL_TP_PCTS.map((pct) => price * (1 - pct / 100)),
+        stopLoss: price * (1 + HL_SL_PCT / 100),
+        score: 0,
+      };
+      try {
+        const text = `${formatSignalText(market.name, plan)}\n24h change: +${market.changePct.toFixed(0)}% · Hyperliquid`;
+        const messageId = await sendTelegram(this.env, chatId, text);
+        console.log('autopilot hl pump short', { coin: market.name, changePct: market.changePct.toFixed(1), entry: price, messageId });
+        trades.open.push({
+          symbol: market.name,
+          base: market.name,
+          venue: 'hyperliquid',
+          strategy: 'hl-pump-short',
+          direction: 'Short',
+          entry: price,
+          leverage: HL_LEVERAGE,
+          stopLoss: plan.stopLoss,
+          targetPct: config.targetPct,
+          openedAt: now,
+          messageId,
+        });
+        pumps.push({ ...entry, status: 'posted' });
+      } catch (err) {
+        console.log('autopilot hl pump error', { coin: market.name, error: String(err) });
+        pumps.push({ ...entry, status: 'error', error: String(err) });
+      }
+    }
+    return { checked: markets.length, pumps };
+  }
 }
 
 // ---------- HTTP entry ----------
 
 const validateAutopilotConfig = (body) => {
-  const { channel, enabled, coins, timeframe, targetPct, riskLevels } = body ?? {};
+  const { channel, enabled, coins, timeframe, targetPct, riskLevels, hlPumpShort } = body ?? {};
   if (!channel || typeof channel !== 'string') return { error: 'channel required' };
   if (typeof enabled !== 'boolean') return { error: 'enabled must be boolean' };
   if (!Array.isArray(coins) || coins.length < 1 || coins.length > AUTOPILOT_MAX_COINS) {
@@ -451,6 +575,7 @@ const validateAutopilotConfig = (body) => {
   if (!Array.isArray(risks) || risks.length < 1 || !risks.every((r) => RISK_LEVELS.includes(r))) {
     return { error: 'pick at least one risk level (Low, Medium, High)' };
   }
+  if (hlPumpShort !== undefined && typeof hlPumpShort !== 'boolean') return { error: 'hlPumpShort must be boolean' };
   return {
     config: {
       channel: normalizeChannel(channel),
@@ -459,6 +584,7 @@ const validateAutopilotConfig = (body) => {
       timeframe,
       targetPct: pct,
       riskLevels: RISK_LEVELS.filter((r) => risks.includes(r)),
+      hlPumpShort: hlPumpShort === true,
     },
   };
 };
