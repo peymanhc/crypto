@@ -73,6 +73,8 @@ export interface AutopilotConfig {
   targetPct: number;
   // Only signals whose plan risk level is in this list are posted (default: Low only)
   riskLevels: RiskLevel[];
+  // Every 30 min, short (4x) any Hyperliquid perp up more than 150% in 24h
+  hlPumpShort?: boolean;
   updatedAt?: number;
 }
 
@@ -81,6 +83,8 @@ export type AutopilotCloseReason = 'profit' | 'stop' | 'expired' | 'manual';
 export interface AutopilotTrade {
   symbol: string;
   base: string;
+  venue?: 'hyperliquid';
+  strategy?: string;
   direction: Recommendation;
   entry: number;
   leverage: number;
@@ -113,4 +117,10 @@ export interface AutopilotStatus {
   lastScanAt: number | null;
   lastError: string | null;
   lastScan?: { at: number; results: AutopilotScanResult[] } | null;
+  lastHlScan?: {
+    at: number;
+    checked: number;
+    pumps: { coin: string; changePct: number; status: 'posted' | 'open' | 'cooldown' | 'low-volume' | 'error'; error?: string }[];
+    error?: string;
+  } | null;
 }

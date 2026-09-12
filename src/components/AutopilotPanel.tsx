@@ -50,7 +50,8 @@ const TradeRow: React.FC<{ trade: AutopilotTrade }> = ({ trade }) => {
   return (
     <div className="flex items-center justify-between gap-2 text-[11px]">
       <span className="font-mono">
-        <span className={`font-bold ${dirColor}`}>${trade.base} {trade.direction.toUpperCase()}</span>{' '}
+        <span className={`font-bold ${dirColor}`}>${trade.base} {trade.direction.toUpperCase()}</span>
+        {trade.venue === 'hyperliquid' && <span className="ml-1 text-[9px] text-purple-600 border border-purple-200 rounded px-1">HL</span>}{' '}
         <span className="text-gray-500">@ {formatPrice(trade.entry)} · {trade.leverage}x</span>
       </span>
       {closed ? (
@@ -120,6 +121,7 @@ const AutopilotPanel: React.FC = () => {
   const [pairs, setPairs] = useState<string[]>([]);
   const [timeframe, setTimeframe] = useState(() => readStorage('autopilot-timeframe', '15m'));
   const [targetPct, setTargetPct] = useState(() => readStorage('telegram-profit-target', '2'));
+  const [hlPumpShort, setHlPumpShort] = useState(() => readStorage('autopilot-hl-pump-short', 'false') === 'true');
   const [riskLevels, setRiskLevels] = useState<RiskLevel[]>(() => {
     try {
       const stored = JSON.parse(readStorage('autopilot-risk-levels', '["Low"]'));
@@ -160,6 +162,7 @@ const AutopilotPanel: React.FC = () => {
         setTimeframe(next.config.timeframe);
         setTargetPct(String(next.config.targetPct));
         setRiskLevels(next.config.riskLevels?.length ? next.config.riskLevels : ['Low']);
+        setHlPumpShort(next.config.hlPumpShort === true);
         setDirty(false);
       }
       setError(null);
@@ -228,6 +231,7 @@ const AutopilotPanel: React.FC = () => {
         timeframe,
         targetPct: Math.min(100, Math.max(0.1, Number(targetPct) || 2)),
         riskLevels,
+        hlPumpShort,
       });
       setStatus(next);
       setEnabled(nextEnabled);
@@ -236,6 +240,7 @@ const AutopilotPanel: React.FC = () => {
       writeStorage('autopilot-timeframe', timeframe);
       writeStorage('telegram-profit-target', targetPct);
       writeStorage('autopilot-risk-levels', JSON.stringify(riskLevels));
+      writeStorage('autopilot-hl-pump-short', String(hlPumpShort));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saving failed');
     } finally {
@@ -401,6 +406,23 @@ const AutopilotPanel: React.FC = () => {
         ))}
       </div>
 
+      <label className="flex items-start gap-1.5 text-[11px] text-gray-600 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={hlPumpShort}
+          onChange={(e) => {
+            setHlPumpShort(e.target.checked);
+            writeStorage('autopilot-hl-pump-short', String(e.target.checked));
+            setDirty(true);
+          }}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="font-medium text-gray-700">Hyperliquid pump short</span>: every 30 min, short (4x) any
+          Hyperliquid coin up more than 150% in 24h
+        </span>
+      </label>
+
       <button
         type="button"
         onClick={() => save(true)}
@@ -447,6 +469,36 @@ const AutopilotPanel: React.FC = () => {
             <div className="space-y-0.5">
               <p className="text-[10px] font-medium text-gray-500">Last scan</p>
               {status.lastScan.results.map((r) => <ScanRow key={r.coin} result={r} />)}
+            </div>
+          )}
+          {status.config.hlPumpShort && (
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-medium text-gray-500">
+                Hyperliquid pumps
+                {status.lastHlScan
+                  ? ` · checked ${formatTime(status.lastHlScan.at)} · ${status.lastHlScan.checked} markets`
+                  : ' · not checked yet'}
+              </p>
+              {status.lastHlScan?.error && (
+                <p className="text-[11px] text-red-600">{status.lastHlScan.error}</p>
+              )}
+              {status.lastHlScan && !status.lastHlScan.error && status.lastHlScan.pumps.length === 0 && (
+                <p className="text-[11px] text-gray-400">No coin above +150% in 24h.</p>
+              )}
+              {status.lastHlScan?.pumps.map((p) => (
+                <div key={p.coin} className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="font-mono">
+                    <span className="text-gray-700">{p.coin}</span>{' '}
+                    <span className="text-green-600">+{p.changePct.toFixed(0)}%</span>
+                  </span>
+                  <span
+                    className={p.status === 'posted' ? 'text-green-700' : p.status === 'error' ? 'text-red-600' : 'text-gray-400'}
+                    title={p.error}
+                  >
+                    {p.status === 'posted' ? 'shorted ✓' : p.status === 'open' ? 'trade open' : p.status === 'error' ? `error: ${p.error ?? ''}` : p.status}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
           {openTrades.length > 0 && (
