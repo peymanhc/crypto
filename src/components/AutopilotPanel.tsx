@@ -69,6 +69,11 @@ const TradeRow: React.FC<TradeRowProps> = ({ trade, onClose, closing }) => {
         </span>
       ) : (
         <span className="flex items-center gap-1.5">
+          {trade.takeProfits && (
+            <span className="text-gray-400" title="Closes at the final TP, not at the channel profit %">
+              TP {trade.tpHit ?? 0}/{trade.takeProfits.length}
+            </span>
+          )}
           <span className="text-gray-400">since {formatTime(trade.openedAt)}</span>
           {onClose && (
             <button
@@ -487,7 +492,7 @@ const AutopilotPanel: React.FC = () => {
             }}
             className="w-16 px-1 py-0.5 border rounded text-[11px] disabled:bg-gray-100 disabled:text-gray-400"
           />
-          % in 24h
+          % in 24h. Closed at its own TP2 (20% below entry) or SL (10% above), not at the profit % above.
         </span>
       </label>
 
