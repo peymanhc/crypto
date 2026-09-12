@@ -6,11 +6,13 @@ import {
   saveAutopilot,
   fetchAutopilotStatus,
   resetAutopilot,
+  scanAutopilotNow,
+  closeAutopilotTrade,
   isAutoCloseAvailable,
   isTelegramConfigured,
   TELEGRAM_BOT_USERNAME,
 } from '../services/api';
-import { Bot, X, RefreshCw, RotateCcw } from 'lucide-react';
+import { Bot, X, RefreshCw, RotateCcw, Radar } from 'lucide-react';
 
 const MAX_COINS = 4;
 const RISK_LEVELS: RiskLevel[] = ['Low', 'Medium', 'High'];
@@ -44,9 +46,15 @@ const writeStorage = (key: string, value: string) => {
   }
 };
 
-const TradeRow: React.FC<{ trade: AutopilotTrade }> = ({ trade }) => {
+interface TradeRowProps {
+  trade: AutopilotTrade;
+  onClose?: (trade: AutopilotTrade) => void;
+  closing?: boolean;
+}
+
+const TradeRow: React.FC<TradeRowProps> = ({ trade, onClose, closing }) => {
   const dirColor = trade.direction === 'Long' ? 'text-green-600' : 'text-red-600';
-  const closed = trade.closedAt !== undefined && trade.pnlPct !== undefined;
+  const closed = trade.closedAt !== undefined;
   return (
     <div className="flex items-center justify-between gap-2 text-[11px]">
       <span className="font-mono">
@@ -55,12 +63,25 @@ const TradeRow: React.FC<{ trade: AutopilotTrade }> = ({ trade }) => {
         <span className="text-gray-500">@ {formatPrice(trade.entry)} · {trade.leverage}x</span>
       </span>
       {closed ? (
-        <span className={`font-medium ${trade.pnlPct! >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-          {trade.pnlPct! >= 0 ? '+' : ''}{trade.pnlPct!.toFixed(2)}%
+        <span className={`font-medium ${(trade.pnlPct ?? 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+          {trade.pnlPct === undefined ? '—' : `${trade.pnlPct >= 0 ? '+' : ''}${trade.pnlPct.toFixed(2)}%`}
           <span className="text-gray-400 font-normal"> · {formatTime(trade.closedAt!)}</span>
         </span>
       ) : (
-        <span className="text-gray-400">since {formatTime(trade.openedAt)}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-gray-400">since {formatTime(trade.openedAt)}</span>
+          {onClose && (
+            <button
+              type="button"
+              onClick={() => onClose(trade)}
+              disabled={closing}
+              title="Post CLOSE for this trade now"
+              className="px-1.5 py-0.5 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 text-[10px] font-medium"
+            >
+              {closing ? '...' : 'Close'}
+            </button>
+          )}
+        </span>
       )}
     </div>
   );
@@ -253,6 +274,34 @@ const AutopilotPanel: React.FC = () => {
   };
 
   const [resetting, setResetting] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [closingKey, setClosingKey] = useState<string | null>(null);
+
+  const handleScanNow = async () => {
+    setScanning(true);
+    setError(null);
+    try {
+      setStatus(await scanAutopilotNow(channel.trim()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Scan failed');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleCloseTrade = async (trade: AutopilotTrade) => {
+    if (!window.confirm(`Post CLOSE $${trade.base} to the channel and close this trade?`)) return;
+    const key = `${trade.symbol}-${trade.openedAt}`;
+    setClosingKey(key);
+    setError(null);
+    try {
+      setStatus(await closeAutopilotTrade(channel.trim(), trade.symbol, trade.openedAt));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Close failed');
+    } finally {
+      setClosingKey(null);
+    }
+  };
   const handleReset = async () => {
     const openCount = status?.openTrades.length ?? 0;
     const message = openCount
@@ -466,6 +515,16 @@ const AutopilotPanel: React.FC = () => {
             <span className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={handleScanNow}
+                disabled={scanning || !enabled}
+                title="Scan the coins right now and post any signal found"
+                className="flex items-center gap-1 text-blue-500 hover:text-blue-700 disabled:opacity-50"
+              >
+                <Radar className={`w-3 h-3 ${scanning ? 'animate-spin' : ''}`} />
+                {scanning ? 'Scanning…' : 'Scan now'}
+              </button>
+              <button
+                type="button"
                 onClick={handleReset}
                 disabled={resetting}
                 title="Close all open trades and start over"
@@ -525,7 +584,14 @@ const AutopilotPanel: React.FC = () => {
           {openTrades.length > 0 && (
             <div className="space-y-0.5">
               <p className="text-[10px] font-medium text-gray-500">Open</p>
-              {openTrades.map((t) => <TradeRow key={`${t.symbol}-${t.openedAt}`} trade={t} />)}
+              {openTrades.map((t) => (
+                <TradeRow
+                  key={`${t.symbol}-${t.openedAt}`}
+                  trade={t}
+                  onClose={handleCloseTrade}
+                  closing={closingKey === `${t.symbol}-${t.openedAt}`}
+                />
+              ))}
             </div>
           )}
           {recentTrades.length > 0 && (

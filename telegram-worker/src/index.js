@@ -301,9 +301,57 @@ export class Autopilot {
       return json({ ok: true, status: await this.status() });
     }
     if (url.pathname === '/reset') {
-      return this.reset();
+      return this.state.blockConcurrencyWhile(() => this.reset());
+    }
+    if (url.pathname === '/scan') {
+      return this.state.blockConcurrencyWhile(() => this.scanNow());
+    }
+    if (url.pathname === '/close') {
+      const body = await request.json();
+      return this.state.blockConcurrencyWhile(() => this.closeTrade(body));
     }
     return json({ ok: false, error: 'not found' }, 404);
+  }
+
+  // "Scan now" from the UI: run both scans immediately, ignoring the intervals
+  async scanNow() {
+    const config = await this.state.storage.get('config');
+    if (!config) return json({ ok: false, error: 'autopilot is not configured' }, 400);
+    if (!config.enabled) return json({ ok: false, error: 'turn the autopilot on first' }, 400);
+    const trades = (await this.state.storage.get('trades')) ?? { open: [], recent: [] };
+    const at = Date.now();
+    await this.state.storage.put('lastScanAt', at);
+    const results = await this.scanForSignals(config, trades);
+    await this.state.storage.put('lastScan', { at, results });
+    const failed = results.filter((r) => r.status === 'error');
+    await this.state.storage.put('lastError', failed.length ? `${failed[0].coin}: ${failed[0].error}` : null);
+    if (config.hlPumpShort) {
+      await this.state.storage.put('lastHlScanAt', at);
+      await this.state.storage.put('lastHlScan', { at, ...(await this.scanHyperliquidPumps(config, trades)) });
+    }
+    await this.state.storage.put('trades', trades);
+    return json({ ok: true, status: await this.status() });
+  }
+
+  // Manual close of one open trade from the UI: CLOSE $COIN + "Closed manually" result reply
+  async closeTrade({ symbol, openedAt }) {
+    const config = await this.state.storage.get('config');
+    const trades = (await this.state.storage.get('trades')) ?? { open: [], recent: [] };
+    const index = trades.open.findIndex((t) => t.symbol === symbol && t.openedAt === Number(openedAt));
+    if (!config || index === -1) return json({ ok: false, error: 'trade not found (already closed?)' }, 404);
+    const trade = trades.open[index];
+    const price = await fetchTradePrice(trade);
+    const pnlPct = price === null ? null : leveragedPnlPct(trade.direction, trade.entry, trade.leverage, price);
+    try {
+      await postClose(this.env, normalizeChannel(config.channel), trade.base, pnlPct, 'manual', trade.messageId);
+    } catch (err) {
+      return json({ ok: false, error: `telegram: ${String(err)}` }, 502);
+    }
+    trades.open.splice(index, 1);
+    trades.recent.unshift({ ...trade, closedAt: Date.now(), exitPrice: price ?? undefined, pnlPct: pnlPct ?? undefined, reason: 'manual' });
+    trades.recent = trades.recent.slice(0, AUTOPILOT_RECENT_KEPT);
+    await this.state.storage.put('trades', trades);
+    return json({ ok: true, status: await this.status() });
   }
 
   // Start over: close every open trade in the channel (CLOSE + result reply), forget the
@@ -366,7 +414,13 @@ export class Autopilot {
     return json({ ok: true, status: await this.status() });
   }
 
+  // Alarm and UI actions (scan / close / reset) all touch `trades`; blockConcurrencyWhile keeps
+  // them from interleaving while one of them is awaiting an exchange or Telegram call
   async alarm() {
+    await this.state.blockConcurrencyWhile(() => this.tick());
+  }
+
+  async tick() {
     const config = await this.state.storage.get('config');
     if (!config?.enabled) return;
 
@@ -644,10 +698,16 @@ export default {
         } catch {
           return json({ ok: false, error: 'invalid JSON' }, 400);
         }
-        if (body?.action === 'reset') {
+        if (body?.action === 'reset' || body?.action === 'scan' || body?.action === 'close') {
           if (!body.channel || typeof body.channel !== 'string') return json({ ok: false, error: 'channel required' }, 400);
+          if (body.action === 'close' && (typeof body.symbol !== 'string' || !Number.isFinite(Number(body.openedAt)))) {
+            return json({ ok: false, error: 'symbol and openedAt required' }, 400);
+          }
           const stub = env.AUTOPILOT.get(env.AUTOPILOT.idFromName(normalizeChannel(body.channel)));
-          return stub.fetch('https://do/reset', { method: 'POST' });
+          return stub.fetch(`https://do/${body.action}`, {
+            method: 'POST',
+            body: JSON.stringify({ symbol: body.symbol, openedAt: Number(body.openedAt) }),
+          });
         }
         const { config, error } = validateAutopilotConfig(body);
         if (error) return json({ ok: false, error }, 400);

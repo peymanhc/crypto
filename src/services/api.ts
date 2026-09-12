@@ -167,6 +167,27 @@ export const resetAutopilot = async (channel: string): Promise<AutopilotStatus> 
   return response.data.status;
 };
 
+const autopilotAction = async (payload: Record<string, unknown>): Promise<AutopilotStatus> => {
+  if (!TELEGRAM_WORKER_URL) {
+    throw new Error('Autopilot worker is not configured');
+  }
+  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/autopilot`, payload, {
+    validateStatus: () => true,
+  });
+  if (!response.data?.ok) {
+    throw new Error(response.data?.error ?? 'Request failed');
+  }
+  return response.data.status;
+};
+
+// Runs the coin scan (and the Hyperliquid scan if enabled) right now, posting any signal found
+export const scanAutopilotNow = (channel: string): Promise<AutopilotStatus> =>
+  autopilotAction({ action: 'scan', channel });
+
+// Closes one open autopilot trade: CLOSE $COIN + "Closed manually" reply
+export const closeAutopilotTrade = (channel: string, symbol: string, openedAt: number): Promise<AutopilotStatus> =>
+  autopilotAction({ action: 'close', channel, symbol, openedAt });
+
 export const fetchAutopilotStatus = async (channel: string): Promise<AutopilotStatus> => {
   if (!TELEGRAM_WORKER_URL) {
     throw new Error('Autopilot worker is not configured');
