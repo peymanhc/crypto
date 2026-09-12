@@ -402,7 +402,13 @@ export class Autopilot {
   }
 
   async configure(config) {
+    const prev = await this.state.storage.get('config');
     await this.state.storage.put('config', { ...config, updatedAt: Date.now() });
+    // Changed settings should show their effect within one tick, not after the full interval
+    const scanKey = (c) => JSON.stringify([c?.coins, c?.timeframe, c?.riskLevels]);
+    const hlKey = (c) => JSON.stringify([c?.hlPumpShort, c?.hlPumpPct]);
+    if (scanKey(prev) !== scanKey(config)) await this.state.storage.delete('lastScanAt');
+    if (hlKey(prev) !== hlKey(config)) await this.state.storage.delete('lastHlScanAt');
     if (config.enabled) {
       // Open trades for coins no longer on the list keep being watched until they
       // resolve — followers were told about them, so they still deserve a CLOSE
@@ -558,6 +564,12 @@ export class Autopilot {
       return { checked: 0, pumps: [], error: String(err) };
     }
     const threshold = Number.isFinite(Number(config.hlPumpPct)) ? Number(config.hlPumpPct) : HL_DEFAULT_PUMP_PCT;
+    // The biggest 24h gainers, threshold or not, so the UI shows what the Worker is looking at
+    const top = markets
+      .filter((m) => m.volume >= HL_MIN_DAY_VOLUME_USD)
+      .sort((a, b) => b.changePct - a.changePct)
+      .slice(0, 5)
+      .map((m) => ({ coin: m.name, changePct: m.changePct }));
     const pumps = [];
     for (const market of markets) {
       if (market.changePct < threshold) continue;
@@ -608,7 +620,7 @@ export class Autopilot {
         pumps.push({ ...entry, status: 'error', error: String(err) });
       }
     }
-    return { checked: markets.length, threshold, pumps };
+    return { checked: markets.length, threshold, top, pumps };
   }
 }
 
