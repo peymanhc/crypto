@@ -71,6 +71,8 @@ export interface AutopilotConfig {
   timeframe: string;
   // Leveraged profit % at which the Worker posts CLOSE $COIN
   targetPct: number;
+  // Only signals whose plan risk level is in this list are posted (default: Low only)
+  riskLevels: RiskLevel[];
   updatedAt?: number;
 }
 
