@@ -77,7 +77,7 @@ const MultiTimeframeAdvice: React.FC<MultiTimeframeAdviceProps> = ({ advices, cm
   const [selectedGap, setSelectedGap] = useState<CmeGap | null>(null);
 
   return (
-    <div className="bg-white p-4 rounded-lg h-full flex flex-col gap-2 overflow-y-auto mb-10">
+    <div className="bg-white p-4 rounded-lg flex flex-col gap-2">
       <h2 className="text-base font-bold text-gray-900 shrink-0">Long / Short by Timeframe</h2>
       <div className="grid grid-cols-1 sm:grid-cols-1 gap-2 flex-1 min-h-0 content-start">
         {advices.map((advice) => (
