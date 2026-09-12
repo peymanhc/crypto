@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AutopilotStatus, AutopilotTrade, AutopilotScanResult } from '../types/trading';
+import { AutopilotStatus, AutopilotTrade, AutopilotScanResult, RiskLevel } from '../types/trading';
 import { TIMEFRAMES } from '../constants/trading';
 import {
   fetchTradingPairs,
@@ -13,6 +13,12 @@ import {
 import { Bot, X, RefreshCw, RotateCcw } from 'lucide-react';
 
 const MAX_COINS = 4;
+const RISK_LEVELS: RiskLevel[] = ['Low', 'Medium', 'High'];
+const riskCheckboxColor: Record<RiskLevel, string> = {
+  Low: 'text-green-700',
+  Medium: 'text-yellow-700',
+  High: 'text-red-700',
+};
 const MAX_SUGGESTIONS = 30;
 const STATUS_REFRESH_MS = 30_000;
 
@@ -114,6 +120,15 @@ const AutopilotPanel: React.FC = () => {
   const [pairs, setPairs] = useState<string[]>([]);
   const [timeframe, setTimeframe] = useState(() => readStorage('autopilot-timeframe', '15m'));
   const [targetPct, setTargetPct] = useState(() => readStorage('telegram-profit-target', '2'));
+  const [riskLevels, setRiskLevels] = useState<RiskLevel[]>(() => {
+    try {
+      const stored = JSON.parse(readStorage('autopilot-risk-levels', '["Low"]'));
+      const valid = Array.isArray(stored) ? RISK_LEVELS.filter((r) => stored.includes(r)) : [];
+      return valid.length ? valid : ['Low'];
+    } catch {
+      return ['Low'];
+    }
+  });
   const [status, setStatus] = useState<AutopilotStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -144,6 +159,7 @@ const AutopilotPanel: React.FC = () => {
         setCoins(next.config.coins);
         setTimeframe(next.config.timeframe);
         setTargetPct(String(next.config.targetPct));
+        setRiskLevels(next.config.riskLevels?.length ? next.config.riskLevels : ['Low']);
         setDirty(false);
       }
       setError(null);
@@ -198,6 +214,10 @@ const AutopilotPanel: React.FC = () => {
       setError(coinsToSend.length === 0 ? 'Pick at least one coin.' : 'Enter your Telegram channel.');
       return;
     }
+    if (riskLevels.length === 0) {
+      setError('Pick at least one risk level.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -207,6 +227,7 @@ const AutopilotPanel: React.FC = () => {
         coins: coinsToSend,
         timeframe,
         targetPct: Math.min(100, Math.max(0.1, Number(targetPct) || 2)),
+        riskLevels,
       });
       setStatus(next);
       setEnabled(nextEnabled);
@@ -214,6 +235,7 @@ const AutopilotPanel: React.FC = () => {
       writeStorage('telegram-channel', channel.trim());
       writeStorage('autopilot-timeframe', timeframe);
       writeStorage('telegram-profit-target', targetPct);
+      writeStorage('autopilot-risk-levels', JSON.stringify(riskLevels));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saving failed');
     } finally {
@@ -237,6 +259,13 @@ const AutopilotPanel: React.FC = () => {
     } finally {
       setResetting(false);
     }
+  };
+
+  const toggleRisk = (level: RiskLevel, checked: boolean) => {
+    const next = checked ? RISK_LEVELS.filter((r) => r === level || riskLevels.includes(r)) : riskLevels.filter((r) => r !== level);
+    setRiskLevels(next);
+    writeStorage('autopilot-risk-levels', JSON.stringify(next));
+    setDirty(true);
   };
 
   const handleToggle = (checked: boolean) => {
@@ -272,8 +301,8 @@ const AutopilotPanel: React.FC = () => {
         </label>
       </div>
       <p className="text-[10px] text-gray-400">
-        Runs server-side: posts every Low-risk signal on the chosen coins to your channel and sends
-        CLOSE $COIN once the leveraged profit target is hit, with the result as a reply.
+        Runs server-side: posts every signal on the chosen coins whose risk level you allow to your
+        channel and sends CLOSE $COIN once the leveraged profit target is hit, with the result as a reply.
       </p>
 
       <input
@@ -358,6 +387,20 @@ const AutopilotPanel: React.FC = () => {
         </label>
       </div>
 
+      <div className="flex items-center gap-3 text-[11px] text-gray-600">
+        <span>Trade risk:</span>
+        {RISK_LEVELS.map((level) => (
+          <label key={level} className={`flex items-center gap-1 cursor-pointer ${riskCheckboxColor[level]}`}>
+            <input
+              type="checkbox"
+              checked={riskLevels.includes(level)}
+              onChange={(e) => toggleRisk(level, e.target.checked)}
+            />
+            {level}
+          </label>
+        ))}
+      </div>
+
       <button
         type="button"
         onClick={() => save(true)}
@@ -420,7 +463,7 @@ const AutopilotPanel: React.FC = () => {
           )}
           {openTrades.length === 0 && recentTrades.length === 0 && !status.lastScan && (
             <p className="text-[10px] text-gray-400">
-              Waiting for a Low-risk signal. {TELEGRAM_BOT_USERNAME} must be an admin of the channel.
+              Waiting for a signal at the allowed risk levels. {TELEGRAM_BOT_USERNAME} must be an admin of the channel.
             </p>
           )}
         </div>

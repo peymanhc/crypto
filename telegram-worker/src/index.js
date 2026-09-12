@@ -35,6 +35,10 @@ const AUTOPILOT_MAX_COINS = 4;
 const AUTOPILOT_RECENT_KEPT = 10;
 const AUTOPILOT_CLOSE_RETRIES = 3;
 const AUTOPILOT_TIMEFRAMES = ['1m', '5m', '15m', '30m', '45m', '1h', '4h', '1d'];
+const RISK_LEVELS = ['Low', 'Medium', 'High'];
+// Configs saved before the risk filter existed behave as they did: Low only
+const allowedRiskLevels = (config) =>
+  Array.isArray(config.riskLevels) && config.riskLevels.length ? config.riskLevels : ['Low'];
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -399,7 +403,7 @@ export class Autopilot {
         const candles = await fetchCandlesForTimeframe(symbol, config.timeframe);
         const plan = buildTradePlan(analyzeCandles(candles));
         const base = { coin, direction: plan.direction, riskLevel: plan.riskLevel, score: plan.score };
-        if (plan.direction === 'Neutral' || plan.riskLevel !== 'Low') {
+        if (plan.direction === 'Neutral' || !allowedRiskLevels(config).includes(plan.riskLevel)) {
           results.push({ ...base, status: 'no-signal' });
           continue;
         }
@@ -430,7 +434,7 @@ export class Autopilot {
 // ---------- HTTP entry ----------
 
 const validateAutopilotConfig = (body) => {
-  const { channel, enabled, coins, timeframe, targetPct } = body ?? {};
+  const { channel, enabled, coins, timeframe, targetPct, riskLevels } = body ?? {};
   if (!channel || typeof channel !== 'string') return { error: 'channel required' };
   if (typeof enabled !== 'boolean') return { error: 'enabled must be boolean' };
   if (!Array.isArray(coins) || coins.length < 1 || coins.length > AUTOPILOT_MAX_COINS) {
@@ -443,8 +447,19 @@ const validateAutopilotConfig = (body) => {
   if (!AUTOPILOT_TIMEFRAMES.includes(timeframe)) return { error: 'bad timeframe' };
   const pct = Number(targetPct);
   if (!Number.isFinite(pct) || pct < 0.1 || pct > 100) return { error: 'targetPct must be 0.1-100' };
+  const risks = riskLevels === undefined ? ['Low'] : riskLevels;
+  if (!Array.isArray(risks) || risks.length < 1 || !risks.every((r) => RISK_LEVELS.includes(r))) {
+    return { error: 'pick at least one risk level (Low, Medium, High)' };
+  }
   return {
-    config: { channel: normalizeChannel(channel), enabled, coins: cleanCoins, timeframe, targetPct: pct },
+    config: {
+      channel: normalizeChannel(channel),
+      enabled,
+      coins: cleanCoins,
+      timeframe,
+      targetPct: pct,
+      riskLevels: RISK_LEVELS.filter((r) => risks.includes(r)),
+    },
   };
 };
 
