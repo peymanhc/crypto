@@ -76,6 +76,7 @@ const signed = (pct) => `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
 // deliberately carry no token name
 const formatResultMessage = (pnlPct, reason) => {
   if (reason === 'manual') return pnlPct === null ? '↩️ Closed manually' : `↩️ Closed manually: ${signed(pnlPct)}`;
+  if (reason === 'tp') return `🎯 Final take profit hit: closed with ${signed(pnlPct)} profit`;
   if (reason === 'stop') return `🛑 Stop loss hit: ${signed(pnlPct)}`;
   if (reason === 'expired') return `⏱ Closed after 24h: ${signed(pnlPct)}`;
   return `✅ Closed with ${signed(pnlPct)} profit`;
@@ -464,7 +465,7 @@ export class Autopilot {
   async checkOpenTrades(config, trades) {
     const chatId = normalizeChannel(config.channel);
     const stillOpen = [];
-    for (const trade of trades.open) {
+    for (let trade of trades.open) {
       const price = await fetchTradePrice(trade);
       if (price === null) {
         stillOpen.push(trade);
@@ -473,10 +474,32 @@ export class Autopilot {
       const pnlPct = leveragedPnlPct(trade.direction, trade.entry, trade.leverage, price);
       const stopHit =
         trade.direction === 'Long' ? price <= trade.stopLoss : price >= trade.stopLoss;
+      const reached = (level) => (trade.direction === 'Long' ? price >= level : price <= level);
       let reason = null;
-      if (pnlPct >= trade.targetPct) reason = 'profit';
-      else if (stopHit) reason = 'stop';
-      else if (Date.now() - trade.openedAt > AUTOPILOT_MAX_HOLD_MS) reason = 'expired';
+      if (stopHit) reason = 'stop';
+      else if (Array.isArray(trade.takeProfits) && trade.takeProfits.length) {
+        // Trades with their own TP ladder (Hyperliquid pump shorts) ignore the channel profit %:
+        // intermediate TPs are announced under the signal, the final TP closes the trade
+        const finalTp = trade.takeProfits[trade.takeProfits.length - 1];
+        if (reached(finalTp)) reason = 'tp';
+        else {
+          const hit = trade.takeProfits.filter((tp) => reached(tp)).length;
+          if (hit > (trade.tpHit ?? 0)) {
+            try {
+              await sendTelegram(
+                this.env,
+                chatId,
+                `🎯 TP${hit} hit: ${signed(pnlPct)} — hold for TP${trade.takeProfits.length}`,
+                trade.messageId
+              );
+            } catch (err) {
+              console.log('tp notify failed', { symbol: trade.symbol, error: String(err) });
+            }
+            trade = { ...trade, tpHit: hit };
+          }
+        }
+      } else if (pnlPct >= trade.targetPct) reason = 'profit';
+      if (!reason && Date.now() - trade.openedAt > AUTOPILOT_MAX_HOLD_MS) reason = 'expired';
 
       if (!reason) {
         stillOpen.push(trade);
@@ -610,6 +633,9 @@ export class Autopilot {
           entry: price,
           leverage: HL_LEVERAGE,
           stopLoss: plan.stopLoss,
+          // Closed by its own TP ladder, not by the channel profit %
+          takeProfits: plan.takeProfits,
+          tpHit: 0,
           targetPct: config.targetPct,
           openedAt: now,
           messageId,

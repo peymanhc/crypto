@@ -79,7 +79,7 @@ export interface AutopilotConfig {
   updatedAt?: number;
 }
 
-export type AutopilotCloseReason = 'profit' | 'stop' | 'expired' | 'manual';
+export type AutopilotCloseReason = 'profit' | 'tp' | 'stop' | 'expired' | 'manual';
 
 export interface AutopilotTrade {
   symbol: string;
@@ -90,6 +90,9 @@ export interface AutopilotTrade {
   entry: number;
   leverage: number;
   stopLoss: number;
+  // Present on trades that exit on their own TP ladder instead of targetPct (Hyperliquid shorts)
+  takeProfits?: number[];
+  tpHit?: number;
   targetPct: number;
   openedAt: number;
   messageId: number | null;
