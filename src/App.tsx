@@ -54,7 +54,9 @@ function App() {
 
       <div className="flex-1 min-h-0 w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[auto,minmax(0,1fr)] gap-3 overflow-y-auto lg:overflow-hidden">
         <div className="lg:col-span-3 min-h-0 flex flex-col gap-3 relative z-20 lg:overflow-y-auto">
-          <div className="flex-1 min-h-0">
+          {/* Natural height: with the autopilot panel below, a flex-1/min-h-0 form would be
+              squeezed under its own content and overlap the panel */}
+          <div className="shrink-0">
             <TradingForm onSubmit={handleSubmit} isLoading={isLoading} />
           </div>
 
