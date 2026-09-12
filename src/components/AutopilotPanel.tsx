@@ -122,6 +122,7 @@ const AutopilotPanel: React.FC = () => {
   const [timeframe, setTimeframe] = useState(() => readStorage('autopilot-timeframe', '15m'));
   const [targetPct, setTargetPct] = useState(() => readStorage('telegram-profit-target', '2'));
   const [hlPumpShort, setHlPumpShort] = useState(() => readStorage('autopilot-hl-pump-short', 'false') === 'true');
+  const [hlPumpPct, setHlPumpPct] = useState(() => readStorage('autopilot-hl-pump-pct', '150'));
   const [riskLevels, setRiskLevels] = useState<RiskLevel[]>(() => {
     try {
       const stored = JSON.parse(readStorage('autopilot-risk-levels', '["Low"]'));
@@ -163,6 +164,7 @@ const AutopilotPanel: React.FC = () => {
         setTargetPct(String(next.config.targetPct));
         setRiskLevels(next.config.riskLevels?.length ? next.config.riskLevels : ['Low']);
         setHlPumpShort(next.config.hlPumpShort === true);
+        setHlPumpPct(String(next.config.hlPumpPct ?? 150));
         setDirty(false);
       }
       setError(null);
@@ -232,6 +234,7 @@ const AutopilotPanel: React.FC = () => {
         targetPct: Math.min(100, Math.max(0.1, Number(targetPct) || 2)),
         riskLevels,
         hlPumpShort,
+        hlPumpPct: Math.min(1000, Math.max(10, Number(hlPumpPct) || 150)),
       });
       setStatus(next);
       setEnabled(nextEnabled);
@@ -241,6 +244,7 @@ const AutopilotPanel: React.FC = () => {
       writeStorage('telegram-profit-target', targetPct);
       writeStorage('autopilot-risk-levels', JSON.stringify(riskLevels));
       writeStorage('autopilot-hl-pump-short', String(hlPumpShort));
+      writeStorage('autopilot-hl-pump-pct', hlPumpPct);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Saving failed');
     } finally {
@@ -417,9 +421,24 @@ const AutopilotPanel: React.FC = () => {
           }}
           className="mt-0.5"
         />
-        <span>
+        <span className="flex flex-wrap items-center gap-1">
           <span className="font-medium text-gray-700">Hyperliquid pump short</span>: every 30 min, short (4x) any
-          Hyperliquid coin up more than 150% in 24h
+          Hyperliquid coin up more than
+          <input
+            type="number"
+            min={10}
+            max={1000}
+            step={5}
+            value={hlPumpPct}
+            disabled={!hlPumpShort}
+            onChange={(e) => {
+              setHlPumpPct(e.target.value);
+              writeStorage('autopilot-hl-pump-pct', e.target.value);
+              setDirty(true);
+            }}
+            className="w-16 px-1 py-0.5 border rounded text-[11px] disabled:bg-gray-100 disabled:text-gray-400"
+          />
+          % in 24h
         </span>
       </label>
 
@@ -483,7 +502,9 @@ const AutopilotPanel: React.FC = () => {
                 <p className="text-[11px] text-red-600">{status.lastHlScan.error}</p>
               )}
               {status.lastHlScan && !status.lastHlScan.error && status.lastHlScan.pumps.length === 0 && (
-                <p className="text-[11px] text-gray-400">No coin above +150% in 24h.</p>
+                <p className="text-[11px] text-gray-400">
+                  No coin above +{status.lastHlScan.threshold ?? status.config.hlPumpPct ?? 150}% in 24h.
+                </p>
               )}
               {status.lastHlScan?.pumps.map((p) => (
                 <div key={p.coin} className="flex items-center justify-between gap-2 text-[11px]">

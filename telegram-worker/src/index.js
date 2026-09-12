@@ -37,7 +37,9 @@ const AUTOPILOT_CLOSE_RETRIES = 3;
 const AUTOPILOT_TIMEFRAMES = ['1m', '5m', '15m', '30m', '45m', '1h', '4h', '1d'];
 // Hyperliquid pump-short strategy: every 30 min, short (4x) any perp up more than 150% in 24h
 const HL_SCAN_MS = 30 * 60_000;
-const HL_PUMP_PCT = 150;
+const HL_DEFAULT_PUMP_PCT = 150; // configurable per channel (hlPumpPct)
+const HL_MIN_PUMP_PCT = 10;
+const HL_MAX_PUMP_PCT = 1000;
 const HL_LEVERAGE = 4;
 const HL_MIN_DAY_VOLUME_USD = 50_000; // skip dead markets whose "pump" is one stray trade
 const HL_COOLDOWN_MS = 24 * 3_600_000; // the 24h change stays elevated for a day; one short per pump
@@ -501,9 +503,10 @@ export class Autopilot {
     } catch (err) {
       return { checked: 0, pumps: [], error: String(err) };
     }
+    const threshold = Number.isFinite(Number(config.hlPumpPct)) ? Number(config.hlPumpPct) : HL_DEFAULT_PUMP_PCT;
     const pumps = [];
     for (const market of markets) {
-      if (market.changePct < HL_PUMP_PCT) continue;
+      if (market.changePct < threshold) continue;
       const entry = { coin: market.name, changePct: market.changePct };
       if (market.volume < HL_MIN_DAY_VOLUME_USD) {
         pumps.push({ ...entry, status: 'low-volume' });
@@ -551,14 +554,14 @@ export class Autopilot {
         pumps.push({ ...entry, status: 'error', error: String(err) });
       }
     }
-    return { checked: markets.length, pumps };
+    return { checked: markets.length, threshold, pumps };
   }
 }
 
 // ---------- HTTP entry ----------
 
 const validateAutopilotConfig = (body) => {
-  const { channel, enabled, coins, timeframe, targetPct, riskLevels, hlPumpShort } = body ?? {};
+  const { channel, enabled, coins, timeframe, targetPct, riskLevels, hlPumpShort, hlPumpPct } = body ?? {};
   if (!channel || typeof channel !== 'string') return { error: 'channel required' };
   if (typeof enabled !== 'boolean') return { error: 'enabled must be boolean' };
   if (!Array.isArray(coins) || coins.length < 1 || coins.length > AUTOPILOT_MAX_COINS) {
@@ -576,6 +579,10 @@ const validateAutopilotConfig = (body) => {
     return { error: 'pick at least one risk level (Low, Medium, High)' };
   }
   if (hlPumpShort !== undefined && typeof hlPumpShort !== 'boolean') return { error: 'hlPumpShort must be boolean' };
+  const pumpPct = hlPumpPct === undefined ? HL_DEFAULT_PUMP_PCT : Number(hlPumpPct);
+  if (!Number.isFinite(pumpPct) || pumpPct < HL_MIN_PUMP_PCT || pumpPct > HL_MAX_PUMP_PCT) {
+    return { error: `hlPumpPct must be ${HL_MIN_PUMP_PCT}-${HL_MAX_PUMP_PCT}` };
+  }
   return {
     config: {
       channel: normalizeChannel(channel),
@@ -585,6 +592,7 @@ const validateAutopilotConfig = (body) => {
       targetPct: pct,
       riskLevels: RISK_LEVELS.filter((r) => risks.includes(r)),
       hlPumpShort: hlPumpShort === true,
+      hlPumpPct: pumpPct,
     },
   };
 };
