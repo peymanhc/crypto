@@ -559,7 +559,9 @@ const AutopilotPanel: React.FC = () => {
               <p className="text-[10px] font-medium text-gray-500">
                 Hyperliquid pumps
                 {status.lastHlScan
-                  ? ` · checked ${formatTime(status.lastHlScan.at)} · ${status.lastHlScan.checked} markets`
+                  ? ` · checked ${formatTime(status.lastHlScan.at)} · ${status.lastHlScan.checked} perps${
+                      status.lastHlScan.spotChecked ? ` + ${status.lastHlScan.spotChecked} spot` : ''
+                    }`
                   : ' · not checked yet'}
               </p>
               {status.lastHlScan?.error && (
@@ -574,8 +576,10 @@ const AutopilotPanel: React.FC = () => {
                 <p className="text-[10px] text-gray-400 flex flex-wrap gap-x-2">
                   <span>Top 24h:</span>
                   {status.lastHlScan.top.map((m) => (
-                    <span key={m.coin} className="font-mono">
-                      {m.coin} <span className={m.changePct >= 0 ? 'text-green-600' : 'text-red-600'}>{m.changePct >= 0 ? '+' : ''}{m.changePct.toFixed(1)}%</span>
+                    <span key={`${m.market ?? 'perp'}-${m.coin}`} className="font-mono">
+                      {m.coin}
+                      {m.market === 'spot' && <span className="text-purple-500"> spot</span>}{' '}
+                      <span className={m.changePct >= 0 ? 'text-green-600' : 'text-red-600'}>{m.changePct >= 0 ? '+' : ''}{m.changePct.toFixed(1)}%</span>
                     </span>
                   ))}
                 </p>
@@ -590,7 +594,15 @@ const AutopilotPanel: React.FC = () => {
                     className={p.status === 'posted' ? 'text-green-700' : p.status === 'error' ? 'text-red-600' : 'text-gray-400'}
                     title={p.error}
                   >
-                    {p.status === 'posted' ? 'shorted ✓' : p.status === 'open' ? 'trade open' : p.status === 'error' ? `error: ${p.error ?? ''}` : p.status}
+                    {p.status === 'posted'
+                      ? 'shorted ✓'
+                      : p.status === 'open'
+                        ? 'trade open'
+                        : p.status === 'spot-no-perp'
+                          ? 'spot only · no perp to short'
+                          : p.status === 'error'
+                            ? `error: ${p.error ?? ''}`
+                            : p.status}
                   </span>
                 </div>
               ))}

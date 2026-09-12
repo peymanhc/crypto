@@ -125,9 +125,16 @@ export interface AutopilotStatus {
     at: number;
     checked: number;
     threshold?: number;
-    // Biggest 24h gainers seen on the last check, regardless of the threshold
-    top?: { coin: string; changePct: number }[];
-    pumps: { coin: string; changePct: number; status: 'posted' | 'open' | 'cooldown' | 'low-volume' | 'error'; error?: string }[];
+    spotChecked?: number;
+    // Biggest 24h gainers seen on the last check (perps and spot pairs), regardless of the threshold
+    top?: { coin: string; changePct: number; market?: 'perp' | 'spot' }[];
+    pumps: {
+      coin: string;
+      changePct: number;
+      status: 'posted' | 'open' | 'cooldown' | 'low-volume' | 'spot-no-perp' | 'error';
+      error?: string;
+    }[];
     error?: string;
+    spotError?: string;
   } | null;
 }

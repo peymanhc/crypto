@@ -42,6 +42,7 @@ const HL_MIN_PUMP_PCT = 10;
 const HL_MAX_PUMP_PCT = 1000;
 const HL_LEVERAGE = 4;
 const HL_MIN_DAY_VOLUME_USD = 50_000; // skip dead markets whose "pump" is one stray trade
+const HL_SPOT_MIN_DAY_VOLUME_USD = 10_000; // spot pairs are thinner; still skip the dead ones
 const HL_COOLDOWN_MS = 24 * 3_600_000; // the 24h change stays elevated for a day; one short per pump
 const HL_TP_PCTS = [10, 20]; // take profits 10% and 20% below entry
 const HL_SL_PCT = 10; // stop 10% above entry
@@ -161,6 +162,33 @@ async function fetchHyperliquidMarkets() {
     if (asset.isDelisted || !Number.isFinite(mark) || !Number.isFinite(prev) || prev <= 0) return;
     markets.push({ name: asset.name, markPx: mark, changePct: (mark / prev - 1) * 100, volume: Number.isFinite(volume) ? volume : 0 });
   });
+  return markets;
+}
+
+// Hyperliquid spot pairs (e.g. ANON/USDC). Spot cannot be shorted, but a pumping spot token
+// whose base also has a perp is a short candidate, and the rest are worth showing in the UI.
+// Contexts are matched by their `coin` field — they are NOT index-aligned with the universe.
+async function fetchHyperliquidSpotMarkets() {
+  const res = await fetch(HL_INFO_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'spotMetaAndAssetCtxs' }),
+  });
+  if (!res.ok) throw new Error(`hyperliquid spot ${res.status}`);
+  const [meta, ctxs] = await res.json();
+  const tokenName = new Map((meta?.tokens ?? []).map((t) => [t.index, t.name]));
+  const ctxByCoin = new Map((ctxs ?? []).map((c) => [c.coin, c]));
+  const markets = [];
+  for (const pair of meta?.universe ?? []) {
+    const ctx = ctxByCoin.get(pair.name);
+    const mark = parseFloat(ctx?.markPx);
+    const prev = parseFloat(ctx?.prevDayPx);
+    const volume = parseFloat(ctx?.dayNtlVlm);
+    if (!Number.isFinite(mark) || !Number.isFinite(prev) || prev <= 0) continue;
+    const base = tokenName.get(pair.tokens?.[0]) ?? pair.name;
+    const quote = tokenName.get(pair.tokens?.[1]) ?? 'USDC';
+    markets.push({ base, pair: `${base}/${quote}`, markPx: mark, changePct: (mark / prev - 1) * 100, volume: Number.isFinite(volume) ? volume : 0 });
+  }
   return markets;
 }
 
@@ -587,13 +615,30 @@ export class Autopilot {
       return { checked: 0, pumps: [], error: String(err) };
     }
     const threshold = Number.isFinite(Number(config.hlPumpPct)) ? Number(config.hlPumpPct) : HL_DEFAULT_PUMP_PCT;
+    // Spot is informational: a spot-only pump cannot be shorted, but it should be visible
+    let spot = [];
+    let spotError;
+    try {
+      spot = await fetchHyperliquidSpotMarkets();
+    } catch (err) {
+      spotError = String(err);
+    }
+    const perpNames = new Set(markets.map((m) => m.name));
+    const liveSpot = spot.filter((m) => m.volume >= HL_SPOT_MIN_DAY_VOLUME_USD);
     // The biggest 24h gainers, threshold or not, so the UI shows what the Worker is looking at
-    const top = markets
-      .filter((m) => m.volume >= HL_MIN_DAY_VOLUME_USD)
+    const top = [
+      ...markets.filter((m) => m.volume >= HL_MIN_DAY_VOLUME_USD).map((m) => ({ coin: m.name, changePct: m.changePct, market: 'perp' })),
+      ...liveSpot.map((m) => ({ coin: m.pair, changePct: m.changePct, market: 'spot' })),
+    ]
       .sort((a, b) => b.changePct - a.changePct)
-      .slice(0, 5)
-      .map((m) => ({ coin: m.name, changePct: m.changePct }));
+      .slice(0, 6);
     const pumps = [];
+    // Spot pumps whose base has no perp: reported, not traded (the perp loop below covers the rest)
+    for (const m of liveSpot) {
+      if (m.changePct >= threshold && !perpNames.has(m.base)) {
+        pumps.push({ coin: m.pair, changePct: m.changePct, status: 'spot-no-perp' });
+      }
+    }
     for (const market of markets) {
       if (market.changePct < threshold) continue;
       const entry = { coin: market.name, changePct: market.changePct };
@@ -646,7 +691,7 @@ export class Autopilot {
         pumps.push({ ...entry, status: 'error', error: String(err) });
       }
     }
-    return { checked: markets.length, threshold, top, pumps };
+    return { checked: markets.length, spotChecked: spot.length, threshold, top, pumps, ...(spotError ? { spotError } : {}) };
   }
 }
 
