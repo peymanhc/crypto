@@ -565,6 +565,16 @@ const AutopilotPanel: React.FC = () => {
                   No coin above +{status.lastHlScan.threshold ?? status.config.hlPumpPct ?? 150}% in 24h.
                 </p>
               )}
+              {status.lastHlScan?.top && status.lastHlScan.top.length > 0 && (
+                <p className="text-[10px] text-gray-400 flex flex-wrap gap-x-2">
+                  <span>Top 24h:</span>
+                  {status.lastHlScan.top.map((m) => (
+                    <span key={m.coin} className="font-mono">
+                      {m.coin} <span className={m.changePct >= 0 ? 'text-green-600' : 'text-red-600'}>{m.changePct >= 0 ? '+' : ''}{m.changePct.toFixed(1)}%</span>
+                    </span>
+                  ))}
+                </p>
+              )}
               {status.lastHlScan?.pumps.map((p) => (
                 <div key={p.coin} className="flex items-center justify-between gap-2 text-[11px]">
                   <span className="font-mono">

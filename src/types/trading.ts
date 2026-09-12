@@ -122,6 +122,8 @@ export interface AutopilotStatus {
     at: number;
     checked: number;
     threshold?: number;
+    // Biggest 24h gainers seen on the last check, regardless of the threshold
+    top?: { coin: string; changePct: number }[];
     pumps: { coin: string; changePct: number; status: 'posted' | 'open' | 'cooldown' | 'low-volume' | 'error'; error?: string }[];
     error?: string;
   } | null;
