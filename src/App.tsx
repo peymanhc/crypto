@@ -47,13 +47,14 @@ function App() {
   );
 
   return (
-    <div className="h-[100svh] overflow-hidden bg-gray-100 flex flex-col p-3 gap-2">
+    <div className="min-h-[100svh] bg-gray-100 flex flex-col p-3 gap-2">
       <h1 className="text-lg lg:text-xl font-bold text-gray-900 text-center shrink-0">
         Coin Analysis
       </h1>
 
-      <div className="flex-1 min-h-0 w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[auto,minmax(0,1fr)] gap-3 overflow-y-auto lg:overflow-hidden">
-        <div className="lg:col-span-3 min-h-0 flex flex-col gap-3 relative z-20 lg:overflow-y-auto">
+      {/* The page itself scrolls; nothing is clipped inside fixed-height columns */}
+      <div className="flex-1 w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-3">
+        <div className="lg:col-span-3 flex flex-col gap-3 relative z-20">
           {/* Natural height: with the autopilot panel below, a flex-1/min-h-0 form would be
               squeezed under its own content and overlap the panel */}
           <div className="shrink-0">
@@ -70,13 +71,13 @@ function App() {
           )}
         </div>
 
-        <div className="lg:col-span-4 min-h-0 lg:overflow-y-auto flex flex-col">
+        <div className="lg:col-span-4 flex flex-col">
           {result && !error
             ? <Result result={result} />
             : placeholder('Submit a request to see the analysis')}
         </div>
 
-        <div className="lg:col-span-5 min-h-0 lg:overflow-y-auto flex flex-col">
+        <div className="lg:col-span-5 flex flex-col">
           {result?.plan && submitted && !error
             ? <SignalCard
                 key={submittedAt}
@@ -88,7 +89,7 @@ function App() {
             : placeholder('The trade signal for the selected timeframe will appear here')}
         </div>
 
-        <div className="lg:col-span-12 min-h-0  h-full">
+        <div className="lg:col-span-12">
           {advices && !error
             ? <MultiTimeframeAdvice advices={advices} cmeGaps={cmeGaps} symbol={submitted?.symbol ?? ''} />
             : placeholder('Long / Short advice per timeframe will appear here')}
