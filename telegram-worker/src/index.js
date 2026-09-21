@@ -33,6 +33,7 @@ const AUTOPILOT_SCAN_MS = 5 * 60_000; // look for new Low-risk signals
 const AUTOPILOT_MAX_HOLD_MS = 24 * 3_600_000; // a trade that never resolves is closed out
 const AUTOPILOT_MAX_COINS = 4;
 const AUTOPILOT_RECENT_KEPT = 10;
+const AUTOPILOT_HISTORY_KEPT = 500; // closed trades kept for the "report" command
 const AUTOPILOT_CLOSE_RETRIES = 3;
 const AUTOPILOT_TIMEFRAMES = ['1m', '5m', '15m', '30m', '45m', '1h', '4h', '1d'];
 // Hyperliquid pump-short strategy: every 30 min, short (4x) any perp up more than 150% in 24h
@@ -47,6 +48,15 @@ const HL_COOLDOWN_MS = 24 * 3_600_000; // the 24h change stays elevated for a da
 const HL_TP_PCTS = [10, 20]; // take profits 10% and 20% below entry
 const HL_SL_PCT = 10; // stop 10% above entry
 const HL_INFO_URL = 'https://api.hyperliquid.xyz/info';
+
+// Typing "report 1D" (or 1W / 1M / ALL) in the channel posts a performance summary
+// over that window, worded with the matching label.
+const REPORT_RANGES = {
+  '1D': { label: 'Daily', ms: 86_400_000 },
+  '1W': { label: 'Weekly', ms: 7 * 86_400_000 },
+  '1M': { label: 'Monthly', ms: 30 * 86_400_000 },
+  ALL: { label: 'All-Time', ms: null },
+};
 
 const RISK_LEVELS = ['Low', 'Medium', 'High'];
 // Configs saved before the risk filter existed behave as they did: Low only
@@ -81,6 +91,34 @@ const formatResultMessage = (pnlPct, reason) => {
   if (reason === 'stop') return `🛑 Stop loss hit: ${signed(pnlPct)}`;
   if (reason === 'expired') return `⏱ Closed after 24h: ${signed(pnlPct)}`;
   return `✅ Closed with ${signed(pnlPct)} profit`;
+};
+
+const reportDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+// The label ("Daily" / "Weekly" / "Monthly" / "All-Time") follows the requested range,
+// so the same builder serves every "report" command
+const formatReport = (label, closed, openCount, since) => {
+  // A manual close whose exit price could not be fetched has no PnL, so it is left out
+  // entirely — that keeps the trade count and the win/loss split consistent
+  const scored = closed.filter((t) => Number.isFinite(t.pnlPct));
+  const total = scored.reduce((sum, t) => sum + t.pnlPct, 0);
+  const wins = scored.filter((t) => t.pnlPct > 0).length;
+  const lines = [`📊 ${label} Performance Update`, '', `💰 ${label} P&L: ${signed(total)}`];
+  if (!scored.length) {
+    lines.push('📈 No trades closed in this period.');
+  } else {
+    const best = scored.reduce((a, b) => (b.pnlPct > a.pnlPct ? b : a));
+    const worst = scored.reduce((a, b) => (b.pnlPct < a.pnlPct ? b : a));
+    lines.push(`📈 Trades closed: ${scored.length} (${wins} ✅ / ${scored.length - wins} ❌)`);
+    lines.push(`🎯 Win rate: ${Math.round((wins / scored.length) * 100)}%`);
+    lines.push(`🏆 Best: $${best.base} ${signed(best.pnlPct)}`);
+    lines.push(`📉 Worst: $${worst.base} ${signed(worst.pnlPct)}`);
+  }
+  lines.push(`📌 Open trades: ${openCount}`);
+  // "ALL" has no start date of its own: fall back to the oldest trade on record
+  const from = since || (scored.length ? Math.min(...scored.map((t) => t.closedAt)) : Date.now());
+  lines.push('', `🗓 ${reportDay(from)} → ${reportDay(Date.now())}`);
+  return lines.join('\n');
 };
 
 const leveragedPnlPct = (direction, entry, leverage, price) => {
@@ -339,6 +377,9 @@ export class Autopilot {
       const body = await request.json();
       return this.state.blockConcurrencyWhile(() => this.closeTrade(body));
     }
+    if (url.pathname === '/report') {
+      return this.report(url.searchParams.get('range'));
+    }
     return json({ ok: false, error: 'not found' }, 404);
   }
 
@@ -380,7 +421,42 @@ export class Autopilot {
     trades.recent.unshift({ ...trade, closedAt: Date.now(), exitPrice: price ?? undefined, pnlPct: pnlPct ?? undefined, reason: 'manual' });
     trades.recent = trades.recent.slice(0, AUTOPILOT_RECENT_KEPT);
     await this.state.storage.put('trades', trades);
+    await this.appendHistory([trades.recent[0]]);
     return json({ ok: true, status: await this.status() });
+  }
+
+  // `recent` only keeps the last 10 closes (enough for the re-entry cooldown), so the
+  // report command reads from its own longer log. It survives a reset on purpose: the
+  // channel's track record is not scan state.
+  async appendHistory(closed) {
+    if (!closed.length) return;
+    const history = (await this.state.storage.get('history')) ?? [];
+    for (const trade of closed) {
+      history.unshift({
+        base: trade.base,
+        direction: trade.direction,
+        pnlPct: Number.isFinite(trade.pnlPct) ? trade.pnlPct : null,
+        reason: trade.reason,
+        openedAt: trade.openedAt,
+        closedAt: trade.closedAt,
+      });
+    }
+    await this.state.storage.put('history', history.slice(0, AUTOPILOT_HISTORY_KEPT));
+  }
+
+  // Answers "report 1D" & co. from the channel
+  async report(range) {
+    const spec = REPORT_RANGES[String(range).toUpperCase()];
+    if (!spec) return json({ ok: false, error: 'bad range' }, 400);
+    const [config, trades, history] = await Promise.all([
+      this.state.storage.get('config'),
+      this.state.storage.get('trades'),
+      this.state.storage.get('history'),
+    ]);
+    if (!config) return json({ ok: false, error: 'not configured' }, 404);
+    const since = spec.ms === null ? 0 : Date.now() - spec.ms;
+    const closed = (history ?? []).filter((t) => t.closedAt >= since);
+    return json({ ok: true, text: formatReport(spec.label, closed, trades?.open?.length ?? 0, since) });
   }
 
   // Start over: close every open trade in the channel (CLOSE + result reply), forget the
@@ -493,6 +569,7 @@ export class Autopilot {
   async checkOpenTrades(config, trades) {
     const chatId = normalizeChannel(config.channel);
     const stillOpen = [];
+    const justClosed = [];
     for (let trade of trades.open) {
       const price = await fetchTradePrice(trade);
       if (price === null) {
@@ -545,10 +622,13 @@ export class Autopilot {
           continue;
         }
       }
-      trades.recent.unshift({ ...trade, closedAt: Date.now(), exitPrice: price, pnlPct, reason });
+      const closed = { ...trade, closedAt: Date.now(), exitPrice: price, pnlPct, reason };
+      trades.recent.unshift(closed);
+      justClosed.push(closed);
     }
     trades.open = stillOpen;
     trades.recent = trades.recent.slice(0, AUTOPILOT_RECENT_KEPT);
+    await this.appendHistory(justClosed);
   }
 
   // Returns one result per coin so the UI can show why a coin did or did not post
@@ -765,6 +845,58 @@ export default {
         })
       );
       return json({ ok: true, results });
+    }
+
+    // Telegram webhook. The only thing it reacts to is someone typing
+    // "report 1D" (or 1W / 1M / ALL) in the channel — everything else is ignored.
+    // Register it once with:
+    //   curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+    //     -d url="https://<worker-host>/telegram" \
+    //     -d secret_token="<TELEGRAM_WEBHOOK_SECRET>" \
+    //     -d allowed_updates='["message","channel_post"]'
+    if (request.method === 'POST' && url.pathname === '/telegram') {
+      const secret = (env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();
+      if (secret && request.headers.get('x-telegram-bot-api-secret-token') !== secret) {
+        return json({ ok: false }, 403);
+      }
+      let update;
+      try {
+        update = await request.json();
+      } catch {
+        return json({ ok: true });
+      }
+      const msg = update?.channel_post ?? update?.message;
+      const text = typeof msg?.text === 'string' ? msg.text.trim() : '';
+      const chatId = msg?.chat?.id;
+      // "/report@thebot 1d" is accepted too — Telegram rewrites commands that way
+      const match = /^\/?report(?:@\w+)?(?:\s+(\S+))?$/i.exec(text);
+      if (!match || chatId === undefined) return json({ ok: true });
+      const range = (match[1] ?? '').toUpperCase();
+
+      // Telegram retries anything that is not a 200, so failures are answered, not thrown
+      try {
+        if (!REPORT_RANGES[range]) {
+          await sendTelegram(env, chatId, 'Usage: report 1D · report 1W · report 1M · report ALL', msg.message_id);
+          return json({ ok: true });
+        }
+        // The autopilot is keyed by the channel as it was configured: "@name" or the numeric id
+        const names = msg.chat?.username ? [`@${msg.chat.username}`, String(chatId)] : [String(chatId)];
+        let report = null;
+        for (const name of names) {
+          const res = await env.AUTOPILOT.get(env.AUTOPILOT.idFromName(name)).fetch(
+            `https://do/report?range=${range}`
+          );
+          const body = await res.json();
+          if (body?.ok) {
+            report = body.text;
+            break;
+          }
+        }
+        await sendTelegram(env, chatId, report ?? 'No autopilot is configured for this channel yet.', msg.message_id);
+      } catch (err) {
+        console.log('report failed', { chatId, range, error: String(err) });
+      }
+      return json({ ok: true });
     }
 
     if (url.pathname === '/autopilot') {
