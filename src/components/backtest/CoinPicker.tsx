@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import CoinSearchInput from '../ui/CoinSearchInput';
 import { fetchTradingPairs } from '../../services/api';
 import Field from '../ui/Field';
 import { useI18n } from '../../i18n';
@@ -67,26 +68,7 @@ const CoinPicker: React.FC<CoinPickerProps> = ({ symbols, max, disabled, onChang
       </AnimatePresence>
 
       {symbols.length < max && (
-        <div className="relative">
-          <Plus className="pointer-events-none absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-          <input
-            type="text"
-            list="backtest-pairs"
-            value={input}
-            disabled={disabled}
-            onChange={(e) => setInput(e.target.value.toUpperCase())}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter') return;
-              e.preventDefault();
-              add(suggestions[0] ?? input);
-            }}
-            placeholder={t('bt.addCoin')}
-            className="field !py-1.5 ps-8 font-mono text-xs"
-          />
-          <datalist id="backtest-pairs">
-            {suggestions.map((pair) => <option key={pair} value={pair} />)}
-          </datalist>
-        </div>
+        <CoinSearchInput value={input} suggestions={suggestions} placeholder={t('bt.addCoin')} disabled={disabled} onChange={setInput} onAdd={add} />
       )}
     </Field>
   );

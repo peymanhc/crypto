@@ -13,7 +13,8 @@ import {
   isTelegramConfigured,
   TELEGRAM_BOT_USERNAME,
 } from '../services/api';
-import { Bot, X, RefreshCw, RotateCcw, Radar, Plus } from 'lucide-react';
+import { Bot, X, RefreshCw, RotateCcw, Radar } from 'lucide-react';
+import CoinSearchInput from './ui/CoinSearchInput';
 import Card from './ui/Card';
 import { useI18n } from '../i18n';
 
@@ -422,30 +423,13 @@ const AutopilotPanel: React.FC = () => {
             )}
           </AnimatePresence>
           {coins.length < MAX_COINS && (
-            <>
-              <div className="relative">
-                <Plus className="pointer-events-none absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  list="autopilot-pairs"
-                  value={coinInput}
-                  onChange={(e) => setCoinInput(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      addCoin(suggestions[0] ?? coinInput);
-                    }
-                  }}
-                  placeholder={t('auto.addCoin', { count: coins.length, max: MAX_COINS })}
-                  className="field !py-1.5 ps-8 text-xs"
-                />
-              </div>
-              <datalist id="autopilot-pairs">
-                {suggestions.map((pair) => (
-                  <option key={pair} value={pair} />
-                ))}
-              </datalist>
-            </>
+            <CoinSearchInput
+              value={coinInput}
+              suggestions={suggestions}
+              placeholder={t('auto.addCoin', { count: coins.length, max: MAX_COINS })}
+              onChange={setCoinInput}
+              onAdd={addCoin}
+            />
           )}
         </div>
 
