@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { TradePlan, RiskLevel } from '../types/trading';
+import { motion } from 'framer-motion';
+import { TradePlan } from '../types/trading';
 import { TIMEFRAMES } from '../constants/trading';
 import {
   fetchCurrentPrice,
@@ -9,7 +10,11 @@ import {
   isAutoCloseAvailable,
   scheduleCloseMessage,
 } from '../services/api';
-import { Zap, ShieldCheck, ShieldAlert, ShieldX, Timer, TrendingUp, TrendingDown, RefreshCw, Copy, Check, Send } from 'lucide-react';
+import { Zap, Timer, TrendingUp, TrendingDown, RefreshCw, Copy, Check, Send } from 'lucide-react';
+import Card from './ui/Card';
+import PlanLadder from './signal/PlanLadder';
+import { useI18n } from '../i18n';
+import { RiskBadge } from './ui/Badge';
 
 interface SignalCardProps {
   symbol: string;
@@ -47,18 +52,6 @@ const formatCountdown = (totalSeconds: number): string => {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 };
 
-const riskStyles: Record<RiskLevel, string> = {
-  Low: 'bg-green-100 text-green-700',
-  Medium: 'bg-yellow-100 text-yellow-700',
-  High: 'bg-red-100 text-red-700',
-};
-
-const riskIcons: Record<RiskLevel, React.ReactNode> = {
-  Low: <ShieldCheck className="w-3.5 h-3.5" />,
-  Medium: <ShieldAlert className="w-3.5 h-3.5" />,
-  High: <ShieldX className="w-3.5 h-3.5" />,
-};
-
 interface Evaluation {
   exitPrice: number;
   pnlPct: number;
@@ -69,9 +62,10 @@ interface LiveCheck extends Evaluation {
 }
 
 const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submittedAt }) => {
+  const { t, ttf } = useI18n();
   const isTrade = plan.direction !== 'Neutral';
-  const dirColor = plan.direction === 'Long' ? 'text-green-600' : 'text-red-600';
-  const timeframeLabel = TIMEFRAMES.find((tf) => tf.value === timeframe)?.label ?? timeframe;
+  const dirColor = plan.direction === 'Long' ? 'text-long' : 'text-short';
+  const timeframeLabel = TIMEFRAMES.some((tf) => tf.value === timeframe) ? ttf(timeframe) : timeframe;
 
   const durationMs = timeframeMs(timeframe);
   const [remaining, setRemaining] = useState(() =>
@@ -194,9 +188,9 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
 
   const tgButtonLabel = (action: TgAction, idle: string): string => {
     if (tgState?.action !== action) return idle;
-    if (tgState.status === 'sending') return 'Sending...';
-    if (tgState.status === 'sent') return 'Sent!';
-    return 'Failed';
+    if (tgState.status === 'sending') return t('common.sending');
+    if (tgState.status === 'sent') return t('common.sent');
+    return t('common.failed');
   };
 
   const handleCopy = async () => {
@@ -254,218 +248,237 @@ const SignalCard: React.FC<SignalCardProps> = ({ symbol, timeframe, plan, submit
     };
   }, [isTrade, remaining, evaluation, evalError, symbol, plan]);
 
+  const countdownProgress = Math.max(0, Math.min(1, 1 - (remaining * 1000) / durationMs));
+
   return (
-    <div className="bg-white rounded-lg p-4 space-y-2 h-full flex-1 min-h-0 flex flex-col">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
-          <Zap className="w-4 h-4 text-yellow-500" />
-          Signal
-        </h2>
-        <div className="flex items-center gap-2">
-          {isTrade && (
-            <span
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${riskStyles[plan.riskLevel]}`}
-            >
-              {riskIcons[plan.riskLevel]}
-              {plan.riskLevel} Risk
+    <Card
+      title={t('signal.title')}
+      icon={<Zap className="h-4 w-4" />}
+      className="h-full"
+      delay={0.1}
+      right={
+        <>
+          {isTrade && <RiskBadge level={plan.riskLevel} />}
+          <span className="chip border-white/10 bg-white/[0.05] text-slate-300">{timeframeLabel}</span>
+        </>
+      }
+    >
+      <div className="flex h-full flex-col gap-3">
+        {isTrade ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+            <div dir="ltr" className="relative rounded-xl border border-white/[0.06] bg-ink-900/70 p-3.5 text-start font-mono text-sm leading-6 sm:col-span-3">
+              <button
+                type="button"
+                onClick={handleCopy}
+                title={t('common.copy')}
+                className={`absolute right-2 top-2 flex items-center gap-1 rounded-lg border px-2 py-1 font-sans text-xs font-medium transition-all
+                  ${copied ? 'border-long/40 bg-long/15 text-long' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'}`}
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? t('common.copied') : t('common.copy')}
+              </button>
+              <p className={`flex items-center gap-1.5 text-base font-bold ${dirColor}`}>
+                {plan.direction === 'Long' ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                ${baseAsset(symbol)} | {plan.direction.toUpperCase()}
+              </p>
+              <p className="text-slate-300">leverage: <span className="text-white">{plan.leverage}x</span></p>
+              <p className="text-slate-300">Entry: <span className="text-white">{formatPrice(plan.entry)}</span></p>
+              {plan.takeProfits.map((tp, index) => (
+                <p key={index} className="text-slate-300">TP{index + 1}: <span className="text-long">{formatPrice(tp)}</span></p>
+              ))}
+              <p className="text-slate-300">SL: <span className="text-short">{formatPrice(plan.stopLoss)}</span></p>
+            </div>
+            <div className="sm:col-span-2">
+              <p className="label">{t('signal.ladder')}</p>
+              <PlanLadder plan={plan} />
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-5 text-center">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.05] text-slate-400">
+              <Timer className="h-5 w-5" />
             </span>
-          )}
-          <span className="text-xs text-gray-400">{timeframeLabel}</span>
-        </div>
-      </div>
+            <p className="text-sm text-slate-400">{t('signal.noSignal', { timeframe: timeframeLabel })}</p>
+          </div>
+        )}
 
-      {isTrade ? (
-        <div className="relative font-mono text-sm leading-6 bg-gray-50 rounded-lg p-3 flex-1">
-          <button
-            type="button"
-            onClick={handleCopy}
-            title="Copy signal"
-            className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md text-xs font-sans font-medium border transition-colors
-              ${copied
-                ? 'bg-green-50 border-green-300 text-green-700'
-                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'}`}
-          >
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            {copied ? 'Copied!' : 'Copy'}
-          </button>
-          <p className={`font-bold ${dirColor}`}>
-            ${baseAsset(symbol)} | {plan.direction.toUpperCase()}
-          </p>
-          <p>leverage: {plan.leverage}x</p>
-          <p>Entry: {formatPrice(plan.entry)}</p>
-          {plan.takeProfits.map((tp, index) => (
-            <p key={index}>TP{index + 1}: {formatPrice(tp)}</p>
-          ))}
-          <p>SL: {formatPrice(plan.stopLoss)}</p>
-        </div>
-      ) : (
-        <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3 flex-1">
-          No trade signal on the {timeframeLabel} timeframe right now — the market is sideways. Wait for a clear setup.
-        </p>
-      )}
-
-      {isTrade && isTelegramConfigured && (() => {
-        const busy = tgState?.status === 'sending';
-        const disabled = busy || !channel.trim();
-        const buttonClass = (action: TgAction, idleColors: string) =>
-          `flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors
-           ${tgState?.action === action && tgState.status === 'sent'
-            ? 'bg-green-50 border-green-300 text-green-700'
-            : tgState?.action === action && tgState.status === 'error'
-              ? 'bg-red-50 border-red-300 text-red-700'
-              : disabled
-                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+        {isTrade && isTelegramConfigured && (() => {
+          const busy = tgState?.status === 'sending';
+          const disabled = busy || !channel.trim();
+          const buttonClass = (action: TgAction, idleColors: string) =>
+            `btn !py-1.5 text-xs
+             ${tgState?.action === action && tgState.status === 'sent'
+              ? 'border-long/40 bg-long/15 text-long'
+              : tgState?.action === action && tgState.status === 'error'
+                ? 'border-short/40 bg-short/15 text-short'
                 : idleColors}`;
-        return (
-          <div className="shrink-0 space-y-1">
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={channel}
-                onChange={(e) => handleChannelChange(e.target.value)}
-                placeholder="@your_channel"
-                className="flex-1 min-w-0 px-2 py-1 text-xs border rounded-md"
-              />
-              <button
-                type="button"
-                onClick={() => sendToChannel('signal', signalText)}
-                disabled={disabled}
-                title="Send this signal to your Telegram channel"
-                className={buttonClass('signal', 'bg-white border-blue-300 text-blue-600 hover:bg-blue-50')}
-              >
-                {tgState?.action === 'signal' && tgState.status === 'sent'
-                  ? <Check className="w-3.5 h-3.5" />
-                  : <Send className="w-3.5 h-3.5" />}
-                {tgButtonLabel('signal', 'Send')}
-              </button>
-            </div>
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                onClick={() => sendToChannel('close', `CLOSE $${baseAsset(symbol)}`)}
-                disabled={disabled}
-                title={`Post "CLOSE $${baseAsset(symbol)}" to your channel`}
-                className={`flex-1 ${buttonClass('close', 'bg-white border-amber-300 text-amber-600 hover:bg-amber-50')}`}
-              >
-                {tgButtonLabel('close', `CLOSE $${baseAsset(symbol)}`)}
-              </button>
-              <button
-                type="button"
-                onClick={() => sendToChannel('exit', `EXIT $${baseAsset(symbol)}`)}
-                disabled={disabled}
-                title={`Post "EXIT $${baseAsset(symbol)}" to your channel`}
-                className={`flex-1 ${buttonClass('exit', 'bg-white border-red-300 text-red-600 hover:bg-red-50')}`}
-              >
-                {tgButtonLabel('exit', `EXIT $${baseAsset(symbol)}`)}
-              </button>
-            </div>
-            {isAutoCloseAvailable && (
-              <div className="space-y-1">
-                <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={closeMode === 'time'}
-                    onChange={(e) => handleCloseModeToggle('time', e.target.checked)}
-                  />
-                  Auto-send CLOSE ${baseAsset(symbol)} after one {timeframeLabel} candle
-                  {closeMode === 'time' && autoCloseStatus === 'scheduled' && (
-                    <span className="text-green-600 font-medium">— scheduled ✓</span>
-                  )}
-                  {closeMode === 'time' && autoCloseStatus === 'failed' && (
-                    <span className="text-red-600 font-medium">— scheduling failed</span>
-                  )}
-                </label>
-                <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer flex-wrap">
-                  <input
-                    type="checkbox"
-                    checked={closeMode === 'profit'}
-                    onChange={(e) => handleCloseModeToggle('profit', e.target.checked)}
-                  />
-                  Auto-reply with the profit % once leveraged profit ≥
-                  {closeMode === 'profit' && (
-                    <input
-                      type="number"
-                      min={0.1}
-                      max={100}
-                      step={0.1}
-                      value={profitTargetPct}
-                      onChange={(e) => handleProfitTargetChange(e.target.value)}
-                      className="w-14 px-1 py-0.5 border rounded text-[11px]"
-                    />
-                  )}
-                  % <span className="text-gray-400">(price checked every 3s, server-side)</span>
-                  {closeMode === 'profit' && autoCloseStatus === 'scheduled' && (
-                    <span className="text-green-600 font-medium">— watching ✓ (≥{clampedProfitTarget()}%)</span>
-                  )}
-                  {closeMode === 'profit' && autoCloseStatus === 'failed' && (
-                    <span className="text-red-600 font-medium">— scheduling failed</span>
-                  )}
-                </label>
+          return (
+            <div className="shrink-0 space-y-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+              <p className="label !mb-0">{t('signal.telegram')}</p>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={channel}
+                  onChange={(e) => handleChannelChange(e.target.value)}
+                  placeholder={t('common.channelPlaceholder')}
+                  className="field min-w-0 flex-1 !py-1.5 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => sendToChannel('signal', signalText)}
+                  disabled={disabled}
+                  title={t('signal.sendTitle')}
+                  className={buttonClass('signal', 'border-glow-cyan/40 bg-glow-cyan/10 text-glow-cyan hover:bg-glow-cyan/20')}
+                >
+                  {tgState?.action === 'signal' && tgState.status === 'sent'
+                    ? <Check className="h-3.5 w-3.5" />
+                    : <Send className="h-3.5 w-3.5" />}
+                  {tgButtonLabel('signal', t('common.send'))}
+                </button>
               </div>
-            )}
-            <p className="text-[10px] text-gray-400">
-              {tgState?.status === 'error'
-                ? `Could not post — make sure ${TELEGRAM_BOT_USERNAME} is an admin of that channel.`
-                : `Add ${TELEGRAM_BOT_USERNAME} as an admin of your channel, then these buttons post there.`}
-            </p>
-          </div>
-        );
-      })()}
-
-      {isTrade && !evaluation && !evalError && (
-        <div className="bg-blue-50 text-blue-700 rounded-lg px-3 py-2 text-sm shrink-0 space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5">
-              <Timer className="w-4 h-4" />
-              Result check after one {timeframeLabel} candle
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="font-mono font-bold">{formatCountdown(remaining)}</span>
-              <button
-                type="button"
-                onClick={handleCheckNow}
-                disabled={isChecking}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border border-blue-300 transition-colors
-                  ${isChecking ? 'bg-blue-100 cursor-not-allowed' : 'bg-white hover:bg-blue-100'}`}
-              >
-                <RefreshCw className={`w-3 h-3 ${isChecking ? 'animate-spin' : ''}`} />
-                Check now
-              </button>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => sendToChannel('close', `CLOSE $${baseAsset(symbol)}`)}
+                  disabled={disabled}
+                  title={t('signal.postTitle', { text: `CLOSE $${baseAsset(symbol)}` })}
+                  className={`flex-1 ${buttonClass('close', 'border-glow-amber/40 bg-glow-amber/10 text-glow-amber hover:bg-glow-amber/20')}`}
+                >
+                  {tgButtonLabel('close', `CLOSE $${baseAsset(symbol)}`)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendToChannel('exit', `EXIT $${baseAsset(symbol)}`)}
+                  disabled={disabled}
+                  title={t('signal.postTitle', { text: `EXIT $${baseAsset(symbol)}` })}
+                  className={`flex-1 ${buttonClass('exit', 'border-short/40 bg-short/10 text-short hover:bg-short/20')}`}
+                >
+                  {tgButtonLabel('exit', `EXIT $${baseAsset(symbol)}`)}
+                </button>
+              </div>
+              {isAutoCloseAvailable && (
+                <div className="space-y-1.5">
+                  <label className="flex cursor-pointer items-center gap-2 text-[11px] text-slate-400">
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={closeMode === 'time'}
+                      onChange={(e) => handleCloseModeToggle('time', e.target.checked)}
+                    />
+                    <span>
+                      {t('signal.autoCloseTime', { base: baseAsset(symbol), timeframe: timeframeLabel })}
+                      {closeMode === 'time' && autoCloseStatus === 'scheduled' && (
+                        <span className="font-medium text-long"> {t('signal.scheduled')}</span>
+                      )}
+                      {closeMode === 'time' && autoCloseStatus === 'failed' && (
+                        <span className="font-medium text-short"> {t('signal.scheduleFailed')}</span>
+                      )}
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={closeMode === 'profit'}
+                      onChange={(e) => handleCloseModeToggle('profit', e.target.checked)}
+                    />
+                    {t('signal.autoCloseProfit')}
+                    {closeMode === 'profit' && (
+                      <input
+                        type="number"
+                        min={0.1}
+                        max={100}
+                        step={0.1}
+                        value={profitTargetPct}
+                        onChange={(e) => handleProfitTargetChange(e.target.value)}
+                        className="field !w-16 !px-1.5 !py-0.5 text-[11px]"
+                      />
+                    )}
+                    % <span className="text-slate-500">{t('signal.autoCloseNote')}</span>
+                    {closeMode === 'profit' && autoCloseStatus === 'scheduled' && (
+                      <span className="font-medium text-long">{t('signal.watching', { pct: clampedProfitTarget() })}</span>
+                    )}
+                    {closeMode === 'profit' && autoCloseStatus === 'failed' && (
+                      <span className="font-medium text-short">{t('signal.scheduleFailed')}</span>
+                    )}
+                  </label>
+                </div>
+              )}
+              <p className="text-[10px] text-slate-500">
+                {tgState?.status === 'error'
+                  ? t('signal.botError', { bot: TELEGRAM_BOT_USERNAME })
+                  : t('signal.botHint', { bot: TELEGRAM_BOT_USERNAME })}
+              </p>
             </div>
+          );
+        })()}
+
+        {isTrade && !evaluation && !evalError && (
+          <div className="relative shrink-0 space-y-2 overflow-hidden rounded-xl border border-glow-blue/20 bg-glow-blue/[0.07] px-3 py-2.5 text-sm text-slate-200">
+            <span dir="ltr" className="absolute inset-x-0 bottom-0 h-0.5 bg-white/[0.06]">
+              <motion.span
+                className="block h-full bg-gradient-to-r from-glow-cyan to-glow-blue"
+                animate={{ width: `${countdownProgress * 100}%` }}
+                transition={{ ease: 'linear', duration: 1 }}
+              />
+            </span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-xs sm:text-sm">
+                <Timer className="h-4 w-4 text-glow-blue" />
+                {t('signal.resultAfter', { timeframe: timeframeLabel })}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="num font-semibold text-white">{formatCountdown(remaining)}</span>
+                <button type="button" onClick={handleCheckNow} disabled={isChecking} className="btn-ghost !px-2 !py-1 text-xs">
+                  <RefreshCw className={`h-3 w-3 ${isChecking ? 'animate-spin' : ''}`} />
+                  {t('signal.checkNow')}
+                </button>
+              </div>
+            </div>
+            {liveCheck && (
+              <p className={`text-xs font-medium ${liveCheck.pnlPct >= 0 ? 'text-long' : 'text-short'}`}>
+                {t('signal.now', {
+                  time: liveCheck.at,
+                  pnl: `${liveCheck.pnlPct >= 0 ? '+' : ''}${liveCheck.pnlPct.toFixed(2)}`,
+                  price: formatPrice(liveCheck.exitPrice),
+                  leverage: plan.leverage,
+                })}
+              </p>
+            )}
           </div>
-          {liveCheck && (
-            <p className={`text-xs font-medium ${liveCheck.pnlPct >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-              Now ({liveCheck.at}): {liveCheck.pnlPct >= 0 ? '+' : ''}{liveCheck.pnlPct.toFixed(2)}% at price{' '}
-              {formatPrice(liveCheck.exitPrice)} with {plan.leverage}x leverage.
-            </p>
-          )}
-        </div>
-      )}
+        )}
 
-      {isTrade && evaluation && (
-        <div
-          className={`rounded-lg px-3 py-2 text-sm shrink-0 ${
-            evaluation.pnlPct >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-          }`}
-        >
-          <span className="flex items-center gap-1.5 font-bold">
-            {evaluation.pnlPct >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-            {evaluation.pnlPct >= 0 ? 'Profit' : 'Loss'}: {evaluation.pnlPct >= 0 ? '+' : ''}
-            {evaluation.pnlPct.toFixed(2)}%
-          </span>
-          <span className="block text-xs mt-0.5">
-            Price after one {timeframeLabel} candle: {formatPrice(evaluation.exitPrice)} — if you had opened this
-            trade at {formatPrice(plan.entry)} with {plan.leverage}x leverage.
-          </span>
-        </div>
-      )}
+        {isTrade && evaluation && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className={`shrink-0 rounded-xl border px-3 py-2.5 text-sm ${
+              evaluation.pnlPct >= 0 ? 'border-long/30 bg-long/10 text-long' : 'border-short/30 bg-short/10 text-short'
+            }`}
+          >
+            <span className="flex items-center gap-1.5 font-bold">
+              {evaluation.pnlPct >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              {evaluation.pnlPct >= 0 ? t('signal.profit') : t('signal.loss')}: {evaluation.pnlPct >= 0 ? '+' : ''}
+              {evaluation.pnlPct.toFixed(2)}%
+            </span>
+            <span className="mt-0.5 block text-xs opacity-80">
+              {t('signal.evaluation', {
+                timeframe: timeframeLabel,
+                price: formatPrice(evaluation.exitPrice),
+                entry: formatPrice(plan.entry),
+                leverage: plan.leverage,
+              })}
+            </span>
+          </motion.div>
+        )}
 
-      {isTrade && evalError && (
-        <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 shrink-0">
-          Could not fetch the price for the result check. Submit again to retry.
-        </p>
-      )}
-    </div>
+        {isTrade && evalError && (
+          <p className="shrink-0 rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-slate-400">
+            {t('signal.evalError')}
+          </p>
+        )}
+      </div>
+    </Card>
   );
 };
 
