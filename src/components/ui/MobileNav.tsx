@@ -11,7 +11,7 @@ const MobileNav: React.FC<{ route: Route }> = ({ route }) => {
     className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.06] bg-ink-950/80 backdrop-blur-xl sm:hidden"
     style={{ paddingBottom: 'var(--sab)' }}
   >
-    <div className="grid grid-cols-4">
+    <div className="grid grid-cols-3">
       {NAV_LINKS.map((link) => {
         const active = link.route === route;
         return (

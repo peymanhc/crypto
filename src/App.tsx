@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useHashRoute } from './hooks/useHashRoute';
 import { useI18n } from './i18n';
@@ -6,8 +7,10 @@ import Header from './components/ui/Header';
 import MobileNav from './components/ui/MobileNav';
 import Dashboard from './pages/Dashboard';
 import BacktestPage from './pages/BacktestPage';
-import StrategiesPage from './pages/StrategiesPage';
-import BuilderPage from './pages/BuilderPage';
+import Skeleton from './components/ui/Skeleton';
+
+// The Hyperliquid SDK and wallet libraries are only downloaded when this tab opens
+const TradePage = lazy(() => import('./pages/TradePage'));
 
 // App shell: background, header, the current page (with a crossfade), footer, mobile tab bar
 function App() {
@@ -27,8 +30,11 @@ function App() {
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           >
             {route === 'backtest' && <BacktestPage />}
-            {route === 'strategies' && <StrategiesPage />}
-            {route === 'builder' && <BuilderPage />}
+            {route === 'trade' && (
+              <Suspense fallback={<div className="glass p-6"><Skeleton lines={6} /></div>}>
+                <TradePage />
+              </Suspense>
+            )}
             {route === 'dashboard' && <Dashboard />}
           </motion.div>
         </AnimatePresence>

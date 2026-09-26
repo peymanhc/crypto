@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { BacktestConfig } from '../types/backtest';
 import { scanTopCoins, TopCoin } from '../lib/backtest/topCoins';
 import { findBestSettings, AutoFillResult } from '../lib/backtest/autoFill';
-import { activeEngineSignal } from '../lib/strategies/backtestSignal';
 
 export type TopCoinsPhase = 'idle' | 'scanning' | 'searching';
 
@@ -29,7 +28,7 @@ export const useTopCoins = (config: BacktestConfig, apply: (next: Partial<Backte
     setPhase('scanning');
     setFailed(false);
     try {
-      const ranked = await scanTopCoins(config, (symbol, done, total) => setProgress({ symbol, done, total }), activeEngineSignal());
+      const ranked = await scanTopCoins(config, (symbol, done, total) => setProgress({ symbol, done, total }));
       setCoins(ranked);
       return ranked;
     } catch {
@@ -49,7 +48,7 @@ export const useTopCoins = (config: BacktestConfig, apply: (next: Partial<Backte
     setPhase('searching');
     setFilled(null);
     try {
-      const best = await findBestSettings(config, symbols, (done, total) => setProgress({ done, total }), activeEngineSignal());
+      const best = await findBestSettings(config, symbols, (done, total) => setProgress({ done, total }));
       if (!best) return;
       const { symbols: s, timeframe, exitMode, targetPct, riskLevels, candles } = best.config;
       apply({ symbols: s, timeframe, exitMode, targetPct, riskLevels, candles });

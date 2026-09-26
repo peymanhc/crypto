@@ -3,7 +3,6 @@ import { BacktestConfig, BacktestProgress, BacktestResult } from '../types/backt
 import { fetchBacktestCandles } from '../lib/backtestData';
 import { runBacktest, SymbolCandles } from '../lib/backtest';
 import { useI18n } from '../i18n';
-import { activeEngineSignal } from '../lib/strategies/backtestSignal';
 
 // Ichimoku needs ~80 candles plus the 200-candle window: below this a run is meaningless
 const MIN_CANDLES = 250;
@@ -44,14 +43,9 @@ export const useBacktestRunner = () => {
     setResult(null);
     try {
       const data = await loadAllCandles(config, id);
-      const outcome = await runBacktest(
-        data,
-        config,
-        (symbol, value) => {
-          if (runId.current === id) setProgress({ phase: 'simulating', symbol, value });
-        },
-        activeEngineSignal()
-      );
+      const outcome = await runBacktest(data, config, (symbol, value) => {
+        if (runId.current === id) setProgress({ phase: 'simulating', symbol, value });
+      });
       if (runId.current !== id) return;
       setResult(outcome);
       setProgress({ phase: 'done', value: 1 });

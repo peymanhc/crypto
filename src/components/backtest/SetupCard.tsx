@@ -8,8 +8,6 @@ import ExitRulePicker from './ExitRulePicker';
 import RiskLevelPicker from './RiskLevelPicker';
 import CostsFields from './CostsFields';
 import { useI18n } from '../../i18n';
-import { useEngine } from '../../hooks/useEngine';
-import { EngineId } from '../../types/strategy';
 
 interface SetupCardProps {
   config: BacktestConfig;
@@ -25,7 +23,6 @@ const CANDLE_OPTIONS = [500, 1000, 2000, 3000, 5000];
 // The whole backtest form: coins, timeframe, candles, exit rule, risk filter, costs, run button
 const SetupCard: React.FC<SetupCardProps> = ({ config, running, error, onChange, onRun }) => {
   const { t, ttf } = useI18n();
-  const { engine, setEngine } = useEngine();
   return (
   <Card title={t('bt.setup')} icon={<Layers className="h-4 w-4" />} className="z-20">
     <div className="space-y-3.5">
@@ -43,12 +40,6 @@ const SetupCard: React.FC<SetupCardProps> = ({ config, running, error, onChange,
           </select>
         </Field>
       </div>
-
-      <Field label={t('bt.engine')} hint={t('bt.engineHint')}>
-        <select value={engine} disabled={running} onChange={(e) => setEngine(e.target.value as EngineId)} className="field !py-1.5 text-xs">
-          {(['dashboard', 'simple', 'pro'] as EngineId[]).map((id) => <option key={id} value={id}>{t(`engine.${id}`)}</option>)}
-        </select>
-      </Field>
 
       <ExitRulePicker value={config.exitMode} disabled={running} onChange={(mode) => onChange('exitMode', mode)} />
 

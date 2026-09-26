@@ -3,7 +3,7 @@
 import { Candle } from '../analysis';
 import { BacktestConfig, BacktestStats } from '../../types/backtest';
 import { fetchBacktestCandles } from '../backtestData';
-import { runBacktest, SignalFn } from './index';
+import { runBacktest } from './index';
 
 export interface TopCoin {
   rank: number;
@@ -70,8 +70,7 @@ const runWithLimit = async <T>(items: T[], limit: number, task: (item: T) => Pro
 // Backtests every coin of the universe with `config` (one coin at a time) and returns the ten best
 export const scanTopCoins = async (
   config: BacktestConfig,
-  onProgress?: (symbol: string, done: number, total: number) => void,
-  signal?: SignalFn
+  onProgress?: (symbol: string, done: number, total: number) => void
 ): Promise<TopCoin[]> => {
   const universe = await fetchTopVolumePairs();
   const scored: { symbol: string; stats: BacktestStats }[] = [];
@@ -81,7 +80,7 @@ export const scanTopCoins = async (
     onProgress?.(symbol, done, universe.length);
     try {
       const candles = await loadCandles(symbol, config.timeframe, SCAN_CANDLES);
-      const result = await runBacktest([{ symbol, candles }], { ...config, symbols: [symbol], candles: SCAN_CANDLES }, undefined, signal);
+      const result = await runBacktest([{ symbol, candles }], { ...config, symbols: [symbol], candles: SCAN_CANDLES });
       if (result.stats.trades >= MIN_TRADES) scored.push({ symbol, stats: result.stats });
     } catch {
       // A coin that fails to load is simply left out of the ranking

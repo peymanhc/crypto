@@ -58,6 +58,7 @@ export default defineConfig({
           react: ['react', 'react-dom'],
           motion: ['framer-motion'],
           charts: ['lightweight-charts'],
+          hyperliquid: ['@nktkas/hyperliquid', 'viem'],
         },
       },
     },

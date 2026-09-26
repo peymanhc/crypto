@@ -5,12 +5,11 @@
 //   3. summarise                           (stats.ts)
 import { Candle } from '../analysis';
 import { BacktestConfig, BacktestResult } from '../../types/backtest';
-import { simulateSymbol, SymbolRun, SignalFn, dashboardSignal } from './simulateSymbol';
+import { simulateSymbol, SymbolRun } from './simulateSymbol';
 import { buildEquityCurve } from './equity';
 import { buildStats } from './stats';
 
 export { DEFAULT_BACKTEST_CONFIG } from './config';
-export type { SignalFn } from './simulateSymbol';
 
 export interface SymbolCandles {
   symbol: string;
@@ -32,12 +31,11 @@ const perSymbolSummary = (run: SymbolRun, trades: BacktestResult['trades']) => {
 export async function runBacktest(
   data: SymbolCandles[],
   config: BacktestConfig,
-  onProgress?: (symbol: string, value: number) => void,
-  signal: SignalFn = dashboardSignal
+  onProgress?: (symbol: string, value: number) => void
 ): Promise<BacktestResult> {
   const runs: SymbolRun[] = [];
   for (const { symbol, candles } of data) {
-    runs.push(await simulateSymbol(symbol, candles, config, (value) => onProgress?.(symbol, value), signal));
+    runs.push(await simulateSymbol(symbol, candles, config, (value) => onProgress?.(symbol, value)));
     onProgress?.(symbol, 1);
   }
 

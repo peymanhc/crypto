@@ -2,7 +2,7 @@
 // on a set of coins and returns the one with the best return.
 import { RiskLevel } from '../../types/trading';
 import { BacktestConfig, BacktestExitMode, BacktestResult } from '../../types/backtest';
-import { runBacktest, SymbolCandles, SignalFn } from './index';
+import { runBacktest, SymbolCandles } from './index';
 import { loadCandles, SCAN_CANDLES } from './topCoins';
 
 const TIMEFRAMES = ['15m', '30m', '1h', '4h'];
@@ -44,8 +44,7 @@ const scoreOf = (result: BacktestResult): number =>
 export const findBestSettings = async (
   base: BacktestConfig,
   symbols: string[],
-  onProgress?: (done: number, total: number) => void,
-  signal?: SignalFn
+  onProgress?: (done: number, total: number) => void
 ): Promise<AutoFillResult | null> => {
   const combos = allCombos();
   let best: AutoFillResult | null = null;
@@ -65,7 +64,7 @@ export const findBestSettings = async (
     for (const combo of combos.filter((c) => c.timeframe === timeframe)) {
       const config: BacktestConfig = { ...base, ...combo, symbols: data.map((d) => d.symbol), candles: SCAN_CANDLES };
       if (data.length > 0) {
-        const result = await runBacktest(data, config, undefined, signal);
+        const result = await runBacktest(data, config);
         if (!best || scoreOf(result) > scoreOf(best.result)) best = { config, result, combosTried: combos.length };
       }
       done += 1;

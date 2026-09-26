@@ -5,15 +5,6 @@ import { BacktestConfig, BacktestCloseReason, SimulatedTrade } from '../../types
 import { ANALYSIS_WINDOW, MIN_COOLDOWN_MS } from './config';
 import { exitPrice, leveragedPnlPct, roundTripCostPct } from './rules';
 
-// Produces the trade plan for a window of candles, or null when there is no signal.
-// The default is the production dashboard logic; the strategy tabs supply their own.
-export type SignalFn = (window: Candle[]) => TradePlan | null;
-
-export const dashboardSignal: SignalFn = (window) => {
-  const plan = buildTradePlan(analyzeCandles(window));
-  return plan.direction === 'Neutral' ? null : plan;
-};
-
 export interface SymbolRun {
   symbol: string;
   trades: SimulatedTrade[];
@@ -34,10 +25,11 @@ interface OpenPosition {
 const yieldToBrowser = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // Signal on the last `ANALYSIS_WINDOW` candles ending at index `i`, or null when Neutral / no data
-const signalAt = (candles: Candle[], i: number, signal: SignalFn): TradePlan | null => {
+const signalAt = (candles: Candle[], i: number): TradePlan | null => {
   const window = candles.slice(i - ANALYSIS_WINDOW + 1, i + 1);
   try {
-    return signal(window);
+    const plan = buildTradePlan(analyzeCandles(window));
+    return plan.direction === 'Neutral' ? null : plan;
   } catch {
     return null;
   }
@@ -99,8 +91,7 @@ export async function simulateSymbol(
   symbol: string,
   candles: Candle[],
   config: BacktestConfig,
-  onProgress?: (value: number) => void,
-  signal: SignalFn = dashboardSignal
+  onProgress?: (value: number) => void
 ): Promise<SymbolRun> {
   const candleMs = timeframeMs(config.timeframe);
   const cooldownMs = Math.max(candleMs, MIN_COOLDOWN_MS);
@@ -128,7 +119,7 @@ export async function simulateSymbol(
     // 2. Look for a new signal when flat and out of cooldown
     const inCooldown = candleCloseTime - lastClosedAt < cooldownMs;
     if (!position && !inCooldown) {
-      const plan = signalAt(candles, i, signal);
+      const plan = signalAt(candles, i);
       if (plan && !config.riskLevels.includes(plan.riskLevel)) skippedByRisk += 1;
       else if (plan) position = { plan, target: exitPrice(plan, config), openedAt: candleCloseTime, openIndex: i };
     }
