@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
-export type Route = 'dashboard' | 'trade' | 'backtest';
+export type Route = 'dashboard' | 'trade' | 'backtest' | 'admin';
 
-const ROUTES: Route[] = ['dashboard', 'trade', 'backtest'];
+const ROUTES: Route[] = ['dashboard', 'trade', 'backtest', 'admin'];
 
 // GitHub Pages serves a single index.html, so pages live behind the hash:
 //   https://.../crypto/            -> dashboard

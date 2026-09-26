@@ -36,6 +36,7 @@ function TradePage() {
 
   const openSignal = async (symbol: string, plan: TradePlan) => {
     if (!session) throw new Error('no-session');
+    if ((account.account?.positions.length ?? 0) >= auto.config.maxOpen) throw new Error('max-open');
     try {
       const result = await openFromPlan(session, settings, symbol, plan);
       log.add({ kind: 'open', coin: result.coin, direction: plan.direction, size: result.size, price: result.avgPx, leverage: result.leverage, plan });

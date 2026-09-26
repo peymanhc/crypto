@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import { LanguageProvider } from './i18n';
+import { AuthProvider } from './hooks/useAuth';
 import './index.css';
 
 // Service worker: caches the app shell for offline launches and picks up new
@@ -12,7 +13,9 @@ registerSW({ immediate: true });
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LanguageProvider>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </LanguageProvider>
   </StrictMode>
 );

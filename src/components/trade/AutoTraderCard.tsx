@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bot, Radar, X } from 'lucide-react';
 import { RiskLevel } from '../../types/trading';
 import { AutoTradeConfig, AutoTradeScanResult } from '../../types/hyperliquid';
+import { ScanSnapshot } from '../../hooks/useAutoTrader';
 import { TIMEFRAMES } from '../../constants/trading';
 import { fetchTradingPairs } from '../../services/api';
 import { useI18n } from '../../i18n';
@@ -13,7 +14,7 @@ interface AutoTraderCardProps {
   config: AutoTradeConfig;
   loggedIn: boolean;
   scanning: boolean;
-  lastScan: { at: number; results: AutoTradeScanResult[] } | null;
+  lastScan: ScanSnapshot | null;
   onChange: (next: Partial<AutoTradeConfig>) => void;
   onToggleRisk: (level: RiskLevel, on: boolean) => void;
   onScanNow: () => void;
@@ -39,7 +40,8 @@ const ScanRow: React.FC<{ result: AutoTradeScanResult }> = ({ result }) => {
     <div className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.03] px-2 py-1.5 text-[11px]">
       <span className="font-mono text-slate-200">
         {result.coin}
-        {result.direction && result.direction !== 'Neutral' && (
+        {result.changePct !== undefined && <span className="ms-1 text-long">+{result.changePct.toFixed(0)}%</span>}
+        {result.changePct === undefined && result.direction && result.direction !== 'Neutral' && (
           <span className={`ms-1 ${result.direction === 'Long' ? 'text-long' : 'text-short'}`}>{result.direction.toUpperCase()} · {t(`common.level.${result.riskLevel ?? 'Low'}`)}</span>
         )}
       </span>
@@ -101,6 +103,13 @@ const AutoTraderCard: React.FC<AutoTraderCardProps> = ({ config, loggedIn, scann
           <CoinSearchInput value={input} suggestions={suggestions} placeholder={t('auto.addCoin', { count: config.coins.length, max: MAX_COINS })} onChange={setInput} onAdd={addCoin} disabled={config.enabled} />
         )}
 
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-1.5 text-[11px] text-slate-400" title={t('hl.auto.maxOpenHint')}>
+            {t('hl.auto.maxOpen')}
+            <input type="number" min={1} max={20} step={1} value={config.maxOpen} disabled={config.enabled} onChange={(e) => onChange({ maxOpen: Math.min(20, Math.max(1, Math.round(Number(e.target.value) || 1))) })} className="field !w-14 !px-1.5 !py-1 text-[11px]" />
+          </label>
+        </div>
+
         <div className="flex items-center gap-3">
           <select value={config.timeframe} disabled={config.enabled} onChange={(e) => onChange({ timeframe: e.target.value })} className="field min-w-0 flex-1 !py-1.5 text-xs">
             {TIMEFRAMES.map(({ value }) => <option key={value} value={value}>{ttf(value)}</option>)}
@@ -115,6 +124,15 @@ const AutoTraderCard: React.FC<AutoTraderCardProps> = ({ config, loggedIn, scann
           </span>
         </div>
 
+        <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-glow-violet/20 bg-glow-violet/[0.06] p-2.5 text-[11px] text-slate-400">
+          <input type="checkbox" className="checkbox mt-0.5" checked={config.hlPumpShort} disabled={config.enabled} onChange={(e) => onChange({ hlPumpShort: e.target.checked })} />
+          <span className="leading-relaxed">
+            <span className="font-semibold text-glow-violet">{t('auto.hlTitle')}</span>{t('auto.hlBefore')}{' '}
+            <input type="number" min={10} max={1000} step={5} value={config.hlPumpPct} disabled={!config.hlPumpShort || config.enabled} onChange={(e) => onChange({ hlPumpPct: Math.min(1000, Math.max(10, Number(e.target.value) || 150)) })} className="field mx-1 inline-block !w-16 !px-1.5 !py-0.5 align-middle text-[11px]" />
+            {t('auto.hlAfter')}
+          </span>
+        </label>
+
         <div className="flex items-center justify-between text-[10px] text-slate-500">
           <span>{lastScan ? t('auto.lastScan', { time: formatTime(lastScan.at) }) : t('auto.noScan')}</span>
           <button type="button" onClick={onScanNow} disabled={!loggedIn || scanning || config.coins.length === 0} className="flex items-center gap-1 text-glow-cyan hover:text-white disabled:opacity-50">
@@ -122,6 +140,16 @@ const AutoTraderCard: React.FC<AutoTraderCardProps> = ({ config, loggedIn, scann
           </button>
         </div>
         {lastScan && <div className="space-y-1">{lastScan.results.map((r) => <ScanRow key={r.coin} result={r} />)}</div>}
+        {config.hlPumpShort && lastScan?.pumps && (
+          <div className="space-y-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{t('auto.hlHeader')}</p>
+            {lastScan.pumps.length === 0 ? (
+              <p className="text-[11px] text-slate-500">{t('auto.hlNone', { pct: config.hlPumpPct })}</p>
+            ) : (
+              lastScan.pumps.map((r) => <ScanRow key={`pump-${r.coin}`} result={r} />)
+            )}
+          </div>
+        )}
         {config.enabled && <p className="text-[10px] text-glow-amber">{t('hl.auto.keepOpen')}</p>}
       </div>
     </Card>

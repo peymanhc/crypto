@@ -24,6 +24,8 @@ export const hlErrorText = (error: string, t: I18n['t']): string => {
       return t('hl.error.neutral');
     case 'no-session':
       return t('hl.error.noSession');
+    case 'max-open':
+      return t('hl.error.maxOpen');
     default:
       return error;
   }

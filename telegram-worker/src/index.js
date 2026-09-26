@@ -111,13 +111,174 @@ const withCors = (response, request) => {
   return out;
 };
 
-// Every request from the app must carry the APP_KEY secret in the x-app-key header.
-// The Telegram webhook has its own secret and /health is public.
-const isAuthorized = (request, env) => {
+// Who is calling: the admin (x-app-key = the APP_KEY secret) or a user with a session
+// token (x-session, issued by POST /auth/login). The Telegram webhook has its own secret
+// and /health is public.
+const isAdmin = (request, env) => {
   const expected = (env.APP_KEY ?? '').trim();
-  if (!expected) return false;
-  return request.headers.get('x-app-key') === expected;
+  return Boolean(expected) && request.headers.get('x-app-key') === expected;
 };
+
+const usersStub = (env) => env.USERS.get(env.USERS.idFromName('users'));
+
+// Resolves to { role: 'admin' | 'user', username } or null
+async function authenticate(request, env) {
+  if (isAdmin(request, env)) return { role: 'admin', username: 'admin' };
+  const token = request.headers.get('x-session');
+  if (!token) return null;
+  const res = await usersStub(env).fetch('https://do/session', { method: 'POST', body: JSON.stringify({ token }) });
+  const body = await res.json();
+  return body?.ok ? { role: 'user', username: body.username } : null;
+}
+
+// ---------- users & sessions ----------
+// The admin creates users (name + password + expiry) and can disable them; users log in
+// with the password and get a session token. Passwords are stored as PBKDF2 hashes.
+const SESSION_MS = 30 * 86_400_000;
+const PBKDF2_ITERATIONS = 100_000;
+
+const toHex = (bytes) => Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, '0')).join('');
+const randomHex = (bytes) => toHex(crypto.getRandomValues(new Uint8Array(bytes)));
+
+async function hashPassword(password, saltHex) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const salt = new Uint8Array(saltHex.match(/../g).map((h) => parseInt(h, 16)));
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PBKDF2_ITERATIONS }, key, 256);
+  return toHex(bits);
+}
+
+const USERNAME_RE = /^[a-z0-9_.-]{3,32}$/i;
+
+// What the admin panel may see about a user (never the hash)
+const publicUser = (u) => ({
+  username: u.username,
+  createdAt: u.createdAt,
+  expiresAt: u.expiresAt,
+  disabled: u.disabled === true,
+  lastLoginAt: u.lastLoginAt ?? null,
+  hlAddresses: u.hlAddresses ?? [],
+});
+
+const userIsActive = (u, now = Date.now()) => u && u.disabled !== true && (!u.expiresAt || u.expiresAt > now);
+
+export class Users {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async users() {
+    return (await this.state.storage.get('users')) ?? {};
+  }
+
+  async sessions() {
+    return (await this.state.storage.get('sessions')) ?? {};
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
+    const users = await this.users();
+
+    if (url.pathname === '/login') {
+      const user = users[String(body.username ?? '').toLowerCase()];
+      if (!user || typeof body.password !== 'string') return json({ ok: false, error: 'bad credentials' }, 401);
+      const hash = await hashPassword(body.password, user.salt);
+      if (hash !== user.hash) return json({ ok: false, error: 'bad credentials' }, 401);
+      if (!userIsActive(user)) return json({ ok: false, error: user.disabled ? 'disabled' : 'expired' }, 403);
+      const token = randomHex(32);
+      const sessions = await this.sessions();
+      const expiresAt = Math.min(Date.now() + SESSION_MS, user.expiresAt || Infinity);
+      sessions[token] = { username: user.username, expiresAt };
+      // Forget sessions that already expired
+      for (const [t, s] of Object.entries(sessions)) if (s.expiresAt < Date.now()) delete sessions[t];
+      user.lastLoginAt = Date.now();
+      await this.state.storage.put('sessions', sessions);
+      await this.state.storage.put('users', users);
+      return json({ ok: true, token, username: user.username, expiresAt });
+    }
+
+    if (url.pathname === '/session') {
+      const sessions = await this.sessions();
+      const session = sessions[String(body.token ?? '')];
+      const user = session && users[session.username];
+      if (!session || session.expiresAt < Date.now() || !userIsActive(user)) return json({ ok: false }, 401);
+      return json({ ok: true, username: user.username, expiresAt: Math.min(session.expiresAt, user.expiresAt || Infinity) });
+    }
+
+    if (url.pathname === '/logout') {
+      const sessions = await this.sessions();
+      delete sessions[String(body.token ?? '')];
+      await this.state.storage.put('sessions', sessions);
+      return json({ ok: true });
+    }
+
+    // A user (or the admin) records the Hyperliquid account they trade with, for the PnL overview
+    if (url.pathname === '/hl-address') {
+      const username = String(body.username ?? '');
+      const address = String(body.address ?? '').toLowerCase();
+      const network = body.network === 'mainnet' ? 'mainnet' : 'testnet';
+      if (!/^0x[0-9a-f]{40}$/.test(address)) return json({ ok: false, error: 'bad address' }, 400);
+      const user = users[username] ?? (username === 'admin' ? (users.admin = { username: 'admin', createdAt: Date.now(), isAdmin: true, hlAddresses: [] }) : null);
+      if (!user) return json({ ok: false, error: 'unknown user' }, 404);
+      const list = user.hlAddresses ?? [];
+      if (!list.some((a) => a.address === address && a.network === network)) list.push({ address, network, addedAt: Date.now() });
+      user.hlAddresses = list;
+      await this.state.storage.put('users', users);
+      return json({ ok: true });
+    }
+
+    // ----- admin only (the HTTP entry checks the key before forwarding here) -----
+    if (url.pathname === '/users' && request.method === 'GET') {
+      return json({ ok: true, users: Object.values(users).map(publicUser) });
+    }
+
+    if (url.pathname === '/users' && request.method === 'POST') {
+      const username = String(body.username ?? '').toLowerCase();
+      if (!USERNAME_RE.test(username) || username === 'admin') return json({ ok: false, error: 'username: 3-32 letters, digits, _ . -' }, 400);
+      if (typeof body.password !== 'string' || body.password.length < 6) return json({ ok: false, error: 'password: at least 6 characters' }, 400);
+      const expiresAt = Number(body.expiresAt);
+      if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return json({ ok: false, error: 'expiresAt must be a future timestamp' }, 400);
+      const existing = users[username];
+      const salt = randomHex(16);
+      users[username] = {
+        ...(existing ?? { createdAt: Date.now(), hlAddresses: [] }),
+        username,
+        salt,
+        hash: await hashPassword(body.password, salt),
+        expiresAt,
+        disabled: false,
+      };
+      await this.state.storage.put('users', users);
+      return json({ ok: true, user: publicUser(users[username]) });
+    }
+
+    if (url.pathname === '/users/update') {
+      const username = String(body.username ?? '').toLowerCase();
+      const user = users[username];
+      if (!user || user.isAdmin) return json({ ok: false, error: 'unknown user' }, 404);
+      const action = body.action;
+      if (action === 'disable') user.disabled = true;
+      else if (action === 'enable') user.disabled = false;
+      else if (action === 'extend') {
+        const expiresAt = Number(body.expiresAt);
+        if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return json({ ok: false, error: 'expiresAt must be a future timestamp' }, 400);
+        user.expiresAt = expiresAt;
+      } else if (action === 'delete') delete users[username];
+      else return json({ ok: false, error: 'bad action' }, 400);
+      // Disabling or deleting a user ends their sessions right away
+      if (action !== 'enable' && action !== 'extend') {
+        const sessions = await this.sessions();
+        for (const [t, sess] of Object.entries(sessions)) if (sess.username === username) delete sessions[t];
+        await this.state.storage.put('sessions', sessions);
+      }
+      await this.state.storage.put('users', users);
+      return json({ ok: true, users: Object.values(users).map(publicUser) });
+    }
+
+    return json({ ok: false, error: 'not found' }, 404);
+  }
+}
 
 // Accept "@name", "name", a t.me link, or a numeric -100... id
 const normalizeChannel = (channel) => {
@@ -962,9 +1123,50 @@ async function handle(request, env) {
       return json({ ok: true });
     }
 
-    // Everything below is called by the app and needs the app key
-    if (!isAuthorized(request, env)) {
+    // Users log in here with the password the admin gave them
+    if (request.method === 'POST' && url.pathname === '/auth/login') {
+      const body = await request.json().catch(() => ({}));
+      return usersStub(env).fetch('https://do/login', { method: 'POST', body: JSON.stringify(body) });
+    }
+
+    // Everything below is called by the app and needs the admin key or a user session
+    const auth = await authenticate(request, env);
+    if (!auth) {
       return json({ ok: false, error: 'unauthorized' }, 401);
+    }
+
+    // Who am I (the app calls this on startup to validate a stored key / session)
+    if (request.method === 'GET' && url.pathname === '/auth/me') {
+      if (auth.role === 'admin') return json({ ok: true, role: 'admin', username: 'admin' });
+      const res = await usersStub(env).fetch('https://do/session', { method: 'POST', body: JSON.stringify({ token: request.headers.get('x-session') }) });
+      const body = await res.json();
+      return json({ ok: true, role: 'user', username: body.username, expiresAt: body.expiresAt });
+    }
+
+    if (request.method === 'POST' && url.pathname === '/auth/logout') {
+      await usersStub(env).fetch('https://do/logout', { method: 'POST', body: JSON.stringify({ token: request.headers.get('x-session') }) });
+      return json({ ok: true });
+    }
+
+    // The Hyperliquid account a user trades with, recorded for the admin's PnL overview
+    if (request.method === 'POST' && url.pathname === '/auth/hl-address') {
+      const body = await request.json().catch(() => ({}));
+      return usersStub(env).fetch('https://do/hl-address', { method: 'POST', body: JSON.stringify({ ...body, username: auth.username }) });
+    }
+
+    // Admin: manage users
+    if (url.pathname.startsWith('/admin/')) {
+      if (auth.role !== 'admin') return json({ ok: false, error: 'forbidden' }, 403);
+      if (url.pathname === '/admin/users' && request.method === 'GET') return usersStub(env).fetch('https://do/users');
+      if (url.pathname === '/admin/users' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        return usersStub(env).fetch('https://do/users', { method: 'POST', body: JSON.stringify(body) });
+      }
+      if (url.pathname === '/admin/users/update' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        return usersStub(env).fetch('https://do/users/update', { method: 'POST', body: JSON.stringify(body) });
+      }
+      return json({ ok: false, error: 'not found' }, 404);
     }
 
     // The app posts to Telegram through here, so the bot token never leaves the Worker

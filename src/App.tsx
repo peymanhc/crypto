@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useHashRoute } from './hooks/useHashRoute';
 import { useI18n } from './i18n';
+import { useAuth } from './hooks/useAuth';
+import LoginPage from './pages/LoginPage';
 import Background from './components/ui/Background';
 import Header from './components/ui/Header';
 import MobileNav from './components/ui/MobileNav';
@@ -11,11 +13,33 @@ import Skeleton from './components/ui/Skeleton';
 
 // The Hyperliquid SDK and wallet libraries are only downloaded when this tab opens
 const TradePage = lazy(() => import('./pages/TradePage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
 
 // App shell: background, header, the current page (with a crossfade), footer, mobile tab bar
 function App() {
   const route = useHashRoute();
   const { t } = useI18n();
+  const auth = useAuth();
+
+  // Nothing renders until the stored login has been checked with the Worker
+  if (!auth.ready) {
+    return (
+      <div className="flex min-h-[100svh] items-center justify-center">
+        <Background />
+        <div className="glass w-full max-w-sm p-6"><Skeleton lines={4} /></div>
+      </div>
+    );
+  }
+  if (!auth.role) {
+    return (
+      <>
+        <Background />
+        <LoginPage />
+      </>
+    );
+  }
+  const isAdmin = auth.role === 'admin';
+
   return (
     <div className="relative flex min-h-[100svh] flex-col">
       <Background />
@@ -35,7 +59,12 @@ function App() {
                 <TradePage />
               </Suspense>
             )}
-            {route === 'dashboard' && <Dashboard />}
+            {route === 'admin' && isAdmin && (
+              <Suspense fallback={<div className="glass p-6"><Skeleton lines={6} /></div>}>
+                <AdminPage />
+              </Suspense>
+            )}
+            {(route === 'dashboard' || (route === 'admin' && !isAdmin)) && <Dashboard />}
           </motion.div>
         </AnimatePresence>
       </main>

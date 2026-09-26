@@ -21,8 +21,8 @@ const write = (key: string, value: unknown) => {
   }
 };
 
-export const DEFAULT_SETTINGS: HlSettings = { marginUsd: 20, maxLeverage: 5, isCross: true, takeProfit: 'tp1', slippagePct: 1 };
-export const DEFAULT_AUTO: AutoTradeConfig = { enabled: false, coins: ['BTC/USDT'], timeframe: '15m', riskLevels: ['Low'] };
+export const DEFAULT_SETTINGS: HlSettings = { marginUsd: 20, maxLeverage: 5, isCross: true, takeProfit: 'profitPct', targetPct: 2, slippagePct: 1 };
+export const DEFAULT_AUTO: AutoTradeConfig = { enabled: false, coins: ['BTC/USDT'], timeframe: '15m', riskLevels: ['Low'], maxOpen: 2, hlPumpShort: false, hlPumpPct: 150 };
 
 export const loadSession = (): HlSession | null => read<HlSession | null>(KEYS.session, null);
 export const saveSession = (session: HlSession | null) => {

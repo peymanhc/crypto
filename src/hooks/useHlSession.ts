@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { HlNetwork, HlSession } from '../types/hyperliquid';
 import { loadSession, saveSession } from '../lib/hyperliquid/session';
 import { connectBrowserWallet, approveNewAgent, sessionFromApiKey } from '../lib/hyperliquid/wallet';
+import { reportHlAddress } from '../services/auth';
 
 // Login state for the Trade tab: a browser wallet + approved agent, or a pasted API key
 export const useHlSession = () => {
@@ -12,6 +13,8 @@ export const useHlSession = () => {
   const finish = (next: HlSession) => {
     saveSession(next);
     setSession(next);
+    // So the admin's overview can show this account's PnL
+    reportHlAddress(next.mainAddress, next.network);
   };
 
   const run = async (task: () => Promise<HlSession>) => {

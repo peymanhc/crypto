@@ -93,9 +93,26 @@ export const setAppKey = (key: string): void => {
   }
 };
 
-const workerHeaders = () => ({ 'x-app-key': getAppKey() });
+const SESSION_STORAGE = 'session';
 
-const workerUrl = (path: string) => `${TELEGRAM_WORKER_URL.replace(/\/$/, '')}${path}`;
+// A user's session token from POST /auth/login (see services/auth.ts)
+export const getSessionToken = (): string => {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_STORAGE) ?? 'null')?.token ?? '';
+  } catch {
+    return '';
+  }
+};
+
+// The admin sends the app key, everyone else their session token
+export const workerHeaders = (): Record<string, string> => {
+  const key = getAppKey();
+  if (key) return { 'x-app-key': key };
+  const token = getSessionToken();
+  return token ? { 'x-session': token } : {};
+};
+
+export const workerUrl = (path: string) => `${TELEGRAM_WORKER_URL.replace(/\/$/, '')}${path}`;
 
 // ---------- Telegram channel integration ----------
 // One app-level bot; each user enters their OWN channel in the UI and adds the bot

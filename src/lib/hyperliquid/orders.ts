@@ -24,14 +24,17 @@ const filledOf = (status: OrderStatus) => (typeof status === 'object' && 'filled
 const marketPrice = (mid: number, isBuy: boolean, slippagePct: number, szDecimals: number): string =>
   roundPrice(mid * (isBuy ? 1 + slippagePct / 100 : 1 - slippagePct / 100), szDecimals);
 
-// Which take profit of the signal is used on the exchange
-const takeProfitOf = (plan: TradePlan, settings: HlSettings): number => {
+const takeProfitOf = (plan: TradePlan, settings: HlSettings, entry: number, leverage: number): number => {
+  if (settings.takeProfit === 'profitPct') {
+    const move = settings.targetPct / 100 / Math.max(1, leverage);
+    return plan.direction === 'Long' ? entry * (1 + move) : entry * (1 - move);
+  }
   if (!plan.takeProfits.length) throw new Error('no-take-profit');
   return settings.takeProfit === 'tp1' ? plan.takeProfits[0] : plan.takeProfits[plan.takeProfits.length - 1];
 };
 
 // Places the entry plus its stop loss and take profit (reduce-only triggers) in one grouped order
-export const openFromPlan = async (session: HlSession, settings: HlSettings, symbol: string, plan: TradePlan): Promise<HlOpenResult> => {
+export const openFromPlan = async (session: HlSession, settings: HlSettings, symbol: string, plan: TradePlan, options: { takeProfit?: HlSettings['takeProfit'] } = {}): Promise<HlOpenResult> => {
   if (plan.direction === 'Neutral') throw new Error('neutral');
   const market = await marketFor(session, symbol);
   const exchange = agentExchangeClient(session.network, session.agentPrivateKey);
@@ -44,7 +47,7 @@ export const openFromPlan = async (session: HlSession, settings: HlSettings, sym
   const size = roundSize((settings.marginUsd * leverage) / mid, market.szDecimals);
   if (Number(size) <= 0) throw new Error('size-too-small');
 
-  const takeProfitPx = takeProfitOf(plan, settings);
+  const takeProfitPx = takeProfitOf(plan, { ...settings, takeProfit: options.takeProfit ?? settings.takeProfit }, mid, leverage);
   const stopPx = roundPrice(plan.stopLoss, market.szDecimals);
   const tpPx = roundPrice(takeProfitPx, market.szDecimals);
   const entry = { a: market.index, b: isBuy, p: marketPrice(mid, isBuy, settings.slippagePct, market.szDecimals), s: size, r: false, t: { limit: { tif: 'Ioc' as const } } };

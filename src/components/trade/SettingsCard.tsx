@@ -36,13 +36,18 @@ const SettingsCard: React.FC<SettingsCardProps> = ({ settings, onChange }) => {
         </div>
         <Field label={t('hl.settings.takeProfit')} hint={t('hl.settings.takeProfitHint')}>
           <div className="flex rounded-xl border border-white/[0.08] bg-white/[0.03] p-0.5 text-xs">
-            {(['tp1', 'tpFinal'] as HlTakeProfitMode[]).map((mode) => (
+            {(['profitPct', 'tp1', 'tpFinal'] as HlTakeProfitMode[]).map((mode) => (
               <button key={mode} type="button" onClick={() => onChange('takeProfit', mode)} className={`flex-1 rounded-lg px-3 py-1.5 font-medium transition-colors ${settings.takeProfit === mode ? 'bg-white/[0.1] text-white' : 'text-slate-400 hover:text-slate-200'}`}>
                 {t(`hl.settings.${mode}`)}
               </button>
             ))}
           </div>
         </Field>
+        {settings.takeProfit === 'profitPct' && (
+          <Field label={t('hl.settings.targetPct')} hint={t('hl.settings.targetPctHint')}>
+            <input type="number" min={0.1} max={100} step={0.1} value={settings.targetPct} onChange={(e) => onChange('targetPct', clamp(Number(e.target.value) || 2, 0.1, 100))} className="field !py-1.5 text-xs" />
+          </Field>
+        )}
       </div>
     </Card>
   );

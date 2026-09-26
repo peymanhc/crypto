@@ -1,18 +1,21 @@
 import { motion } from 'framer-motion';
 import { Route, routeHref } from '../../hooks/useHashRoute';
-import { NAV_LINKS } from './navigation';
+import { linksFor } from './navigation';
 import { useI18n } from '../../i18n';
+import { useAuth } from '../../hooks/useAuth';
 
 // Thumb-reachable tab bar on phones; hidden on wider screens where the header nav shows
 const MobileNav: React.FC<{ route: Route }> = ({ route }) => {
   const { t } = useI18n();
+  const { role } = useAuth();
+  const links = linksFor(role === 'admin');
   return (
   <nav
     className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.06] bg-ink-950/80 backdrop-blur-xl sm:hidden"
     style={{ paddingBottom: 'var(--sab)' }}
   >
-    <div className="grid grid-cols-3">
-      {NAV_LINKS.map((link) => {
+    <div className="grid" style={{ gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}>
+      {links.map((link) => {
         const active = link.route === route;
         return (
           <a

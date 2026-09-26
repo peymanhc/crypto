@@ -16,7 +16,7 @@ export interface HlSession {
 }
 
 // Which take profit of the signal closes the position on Hyperliquid
-export type HlTakeProfitMode = 'tp1' | 'tpFinal';
+export type HlTakeProfitMode = 'tp1' | 'tpFinal' | 'profitPct';
 
 export interface HlSettings {
   // USD of margin put into each trade; notional = margin x leverage
@@ -25,6 +25,7 @@ export interface HlSettings {
   maxLeverage: number;
   isCross: boolean;
   takeProfit: HlTakeProfitMode;
+  targetPct: number;
   // Price tolerance for the IOC "market" entry / exit, in %
   slippagePct: number;
 }
@@ -35,15 +36,19 @@ export interface AutoTradeConfig {
   coins: string[];
   timeframe: string;
   riskLevels: RiskLevel[];
+  maxOpen: number;
+  hlPumpShort: boolean;
+  hlPumpPct: number;
 }
 
-export type AutoTradeOutcome = 'opened' | 'no-signal' | 'position-open' | 'risk-filtered' | 'paused' | 'error';
+export type AutoTradeOutcome = 'opened' | 'no-signal' | 'position-open' | 'risk-filtered' | 'paused' | 'max-open' | 'cooldown' | 'error';
 
 export interface AutoTradeScanResult {
   coin: string;
   status: AutoTradeOutcome;
   direction?: Recommendation;
   riskLevel?: RiskLevel;
+  changePct?: number;
   error?: string;
 }
 

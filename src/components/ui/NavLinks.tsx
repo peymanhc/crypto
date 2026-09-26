@@ -1,14 +1,16 @@
 import { motion } from 'framer-motion';
 import { Route, routeHref } from '../../hooks/useHashRoute';
-import { NAV_LINKS } from './navigation';
+import { linksFor } from './navigation';
 import { useI18n } from '../../i18n';
+import { useAuth } from '../../hooks/useAuth';
 
 // Desktop page switcher with a sliding highlight behind the active page
 const NavLinks: React.FC<{ route: Route }> = ({ route }) => {
   const { t } = useI18n();
+  const { role } = useAuth();
   return (
   <nav className="hidden items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] p-1 sm:flex">
-    {NAV_LINKS.map((link) => {
+    {linksFor(role === 'admin').map((link) => {
       const active = link.route === route;
       return (
         <a

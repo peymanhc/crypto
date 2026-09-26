@@ -6,6 +6,7 @@ compatibility_date = "2025-01-01"
 bindings = [
   { name = "CLOSE_SCHEDULER", class_name = "CloseScheduler" },
   { name = "AUTOPILOT", class_name = "Autopilot" },
+  { name = "USERS", class_name = "Users" },
 ]
 
 [[migrations]]
@@ -15,3 +16,7 @@ new_sqlite_classes = ["CloseScheduler"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Autopilot"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Users"]
