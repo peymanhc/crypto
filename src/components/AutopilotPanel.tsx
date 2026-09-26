@@ -15,6 +15,7 @@ import {
 } from '../services/api';
 import { Bot, X, RefreshCw, RotateCcw, Radar } from 'lucide-react';
 import CoinSearchInput from './ui/CoinSearchInput';
+import { loadWindows, localTzOffsetMinutes } from '../lib/tradeWindows';
 import Card from './ui/Card';
 import { useI18n } from '../i18n';
 
@@ -111,6 +112,8 @@ const scanOutcomeLabel = (result: AutopilotScanResult, t: ReturnType<typeof useI
       return t('auto.status.open');
     case 'cooldown':
       return t('auto.status.cooldown');
+    case 'paused':
+      return t('auto.status.paused');
     case 'error':
       return t('auto.status.error', { error: result.error ?? 'unknown' });
     default:
@@ -278,6 +281,9 @@ const AutopilotPanel: React.FC = () => {
         riskLevels,
         hlPumpShort,
         hlPumpPct: Math.min(1000, Math.max(10, Number(hlPumpPct) || 150)),
+        // No-trade windows come from the Dashboard card next to this panel
+        noTradeWindows: loadWindows(),
+        tzOffsetMinutes: localTzOffsetMinutes(),
       });
       setStatus(next);
       setEnabled(nextEnabled);

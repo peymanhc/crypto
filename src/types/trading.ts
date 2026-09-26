@@ -76,6 +76,9 @@ export interface AutopilotConfig {
   // Every 30 min, short (4x) any Hyperliquid perp up more than hlPumpPct % in 24h
   hlPumpShort?: boolean;
   hlPumpPct?: number;
+  // Local-time windows in which no new trade is opened, with the browser's UTC offset in minutes
+  noTradeWindows?: { from: string; to: string }[];
+  tzOffsetMinutes?: number;
   updatedAt?: number;
 }
 
@@ -102,7 +105,7 @@ export interface AutopilotTrade {
   reason?: AutopilotCloseReason;
 }
 
-export type AutopilotScanOutcome = 'posted' | 'no-signal' | 'open' | 'cooldown' | 'error';
+export type AutopilotScanOutcome = 'posted' | 'no-signal' | 'open' | 'cooldown' | 'paused' | 'error';
 
 // What the Worker concluded for one coin in its latest scan
 export interface AutopilotScanResult {

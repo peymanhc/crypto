@@ -37,7 +37,7 @@ export interface AutoTradeConfig {
   riskLevels: RiskLevel[];
 }
 
-export type AutoTradeOutcome = 'opened' | 'no-signal' | 'position-open' | 'risk-filtered' | 'error';
+export type AutoTradeOutcome = 'opened' | 'no-signal' | 'position-open' | 'risk-filtered' | 'paused' | 'error';
 
 export interface AutoTradeScanResult {
   coin: string;

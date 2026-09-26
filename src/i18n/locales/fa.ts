@@ -368,6 +368,21 @@ const fa: Dictionary = {
   'appkey.save': 'ذخیره‌ی کلید',
   'appkey.saved': 'ذخیره شد',
   'msg.Request failed with status code 401': 'کلید اپ وارد نشده یا اشتباه است. روی آیکون کلید در هدر بزنید و APP_KEY را وارد کنید.',
+  'windows.title': 'ساعات بدون معامله',
+  'windows.description': 'در این بازه‌های زمانی (به وقت محلی شما) هیچ معامله‌ی جدیدی باز نمی‌شود؛ نه توسط Autopilot سرور و نه معامله‌ی خودکار Hyperliquid. معاملات باز، استاپ و تارگت‌شان را نگه می‌دارند و طبق معمول بسته می‌شوند. بازه می‌تواند از نیمه‌شب رد شود.',
+  'windows.empty': 'هنوز بازه‌ای تعریف نشده. معامله در تمام روز مجاز است.',
+  'windows.from': 'از',
+  'windows.to': 'تا',
+  'windows.add': 'افزودن بازه',
+  'windows.remove': 'حذف',
+  'windows.pausedNow': 'متوقف تا {to}',
+  'windows.tradingNow': 'الان معامله مجاز است',
+  'windows.hint': 'در همین مرورگر ذخیره می‌شود و با هر تغییر به Autopilot فرستاده می‌شود.',
+  'windows.syncing': 'در حال ارسال به Autopilot…',
+  'windows.synced': 'Autopilot به‌روز شد.',
+  'windows.syncFailed': 'این‌جا ذخیره شد ولی Autopilot به‌روز نشد. در پنل بالا «به‌روزرسانی Autopilot» را بزنید.',
+  'auto.status.paused': 'ساعات بدون معامله',
+  'hl.auto.status.paused': 'ساعات بدون معامله',
 };
 
 export default fa;

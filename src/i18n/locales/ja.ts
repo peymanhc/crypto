@@ -368,6 +368,21 @@ const ja: Dictionary = {
   'appkey.save': 'キーを保存',
   'appkey.saved': '保存しました',
   'msg.Request failed with status code 401': 'アプリキーが未入力か間違っています。ヘッダーの鍵アイコンから APP_KEY を入力してください。',
+  'windows.title': '取引しない時間帯',
+  'windows.description': 'この時間帯 (現地時間) には、オートパイロット (サーバー) も Hyperliquid 自動取引も新しい取引を開きません。既に開いている取引はストップとターゲットを保ち、通常どおり決済されます。範囲は日をまたいでも構いません。',
+  'windows.empty': '休止時間帯はまだありません。終日取引可能です。',
+  'windows.from': '開始',
+  'windows.to': '終了',
+  'windows.add': '時間帯を追加',
+  'windows.remove': '削除',
+  'windows.pausedNow': '{to} まで休止',
+  'windows.tradingNow': '現在取引可能',
+  'windows.hint': 'このブラウザに保存され、変更のたびにオートパイロットへ送信されます。',
+  'windows.syncing': 'オートパイロットへ送信中…',
+  'windows.synced': 'オートパイロットを更新しました。',
+  'windows.syncFailed': 'ここには保存されましたが、オートパイロットを更新できませんでした。上のパネルで「オートパイロットを更新」を押してください。',
+  'auto.status.paused': '取引しない時間帯',
+  'hl.auto.status.paused': '取引しない時間帯',
 };
 
 export default ja;

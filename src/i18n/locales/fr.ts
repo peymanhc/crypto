@@ -368,6 +368,21 @@ const fr: Dictionary = {
   'appkey.save': 'Enregistrer la clé',
   'appkey.saved': 'Enregistrée',
   'msg.Request failed with status code 401': "Clé de l'app absente ou incorrecte. Cliquez sur l'icône clé dans l'en-tête et saisissez APP_KEY.",
+  'windows.title': 'Heures sans trading',
+  'windows.description': "Entre ces heures locales, aucun nouveau trade n'est ouvert, ni par l'autopilote (serveur) ni par le trading auto Hyperliquid. Les trades déjà ouverts gardent leur stop et leur cible et se ferment normalement. Une plage peut passer minuit.",
+  'windows.empty': 'Aucune plage de pause. Le trading est autorisé toute la journée.',
+  'windows.from': 'De',
+  'windows.to': 'À',
+  'windows.add': 'Ajouter une plage',
+  'windows.remove': 'Supprimer',
+  'windows.pausedNow': "En pause jusqu'à {to}",
+  'windows.tradingNow': 'Trading autorisé maintenant',
+  'windows.hint': "Enregistré dans ce navigateur et envoyé à l'autopilote à chaque changement.",
+  'windows.syncing': "Envoi à l'autopilote…",
+  'windows.synced': 'Autopilote mis à jour.',
+  'windows.syncFailed': "Enregistré ici, mais l'autopilote n'a pas pu être mis à jour. Cliquez sur « Mettre à jour l'autopilote » dans le panneau ci-dessus.",
+  'auto.status.paused': 'heures sans trading',
+  'hl.auto.status.paused': 'heures sans trading',
 };
 
 export default fr;

@@ -8,6 +8,7 @@ import Result from '../components/Result';
 import MultiTimeframeAdvice from '../components/MultiTimeframeAdvice';
 import SignalCard from '../components/SignalCard';
 import AutopilotPanel from '../components/AutopilotPanel';
+import NoTradeWindowsCard from '../components/NoTradeWindowsCard';
 import PageTitle from '../components/ui/PageTitle';
 import Placeholder from '../components/ui/Placeholder';
 import { useI18n } from '../i18n';
@@ -60,6 +61,7 @@ function Dashboard() {
         <div className="flex flex-col gap-4 lg:col-span-3">
           <TradingForm onSubmit={handleSubmit} isLoading={isLoading} />
           <AutopilotPanel />
+          <NoTradeWindowsCard />
           {error && (
             <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="flex items-center gap-2 rounded-2xl border border-short/30 bg-short/10 p-3">
               <AlertCircle className="h-4 w-4 shrink-0 text-short" />

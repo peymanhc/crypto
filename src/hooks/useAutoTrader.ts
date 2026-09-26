@@ -5,6 +5,7 @@ import { analyzeCandles, buildTradePlan, timeframeMs, baseAsset } from '../lib/a
 import { fetchBacktestCandles } from '../lib/backtestData';
 import { readAccount, openFromPlan } from '../lib/hyperliquid/orders';
 import { loadAutoConfig, saveAutoConfig } from '../lib/hyperliquid/session';
+import { loadWindows, activeWindow } from '../lib/tradeWindows';
 
 // Same rhythm as the Worker's autopilot: look for signals every 5 minutes,
 // analyse the latest 200 candles, wait one candle (min 30 min) before re-entering a coin
@@ -64,6 +65,11 @@ export const useAutoTrader = ({ session, settings, log, onOpened }: Deps) => {
   const scan = async () => {
     const { session: s, config: c } = latest.current;
     if (!s || scanning) return;
+    // Inside a no-trade window (Dashboard card) nothing new is opened
+    if (activeWindow(loadWindows())) {
+      setLastScan({ at: Date.now(), results: c.coins.map((coin) => ({ coin, status: 'paused' as const })) });
+      return;
+    }
     setScanning(true);
     try {
       const account = await readAccount(s);

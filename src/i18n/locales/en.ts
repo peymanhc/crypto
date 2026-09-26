@@ -383,6 +383,21 @@ const en = {
   'appkey.save': 'Save key',
   'appkey.saved': 'Saved',
   'msg.Request failed with status code 401': 'App key missing or wrong. Click the key icon in the header and enter the APP_KEY.',
+  'windows.title': 'No-trade hours',
+  'windows.description': 'Between these local times no new trade is opened, by the autopilot (server) or the Hyperliquid auto trader. Trades already open keep their stop and target and close as usual. Ranges may cross midnight.',
+  'windows.empty': 'No pause window yet. Trading is allowed all day.',
+  'windows.from': 'From',
+  'windows.to': 'To',
+  'windows.add': 'Add window',
+  'windows.remove': 'Remove',
+  'windows.pausedNow': 'Paused until {to}',
+  'windows.tradingNow': 'Trading allowed now',
+  'windows.hint': 'Saved in this browser and sent to the autopilot on every change.',
+  'windows.syncing': 'Sending to the autopilot…',
+  'windows.synced': 'Autopilot updated.',
+  'windows.syncFailed': 'Saved here, but the autopilot could not be updated. Press "Update autopilot" in the panel above.',
+  'auto.status.paused': 'no-trade hours',
+  'hl.auto.status.paused': 'no-trade hours',
 };
 
 export default en;

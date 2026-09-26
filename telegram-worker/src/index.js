@@ -59,6 +59,28 @@ const REPORT_RANGES = {
 };
 
 const RISK_LEVELS = ['Low', 'Medium', 'High'];
+
+// ---------- no-trade windows ----------
+// Local-time ranges ("08:00" -> "09:00") in which the autopilot opens no NEW trade.
+// Open trades keep being watched and closed. Windows may wrap midnight.
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const minutesOf = (time) => {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+};
+const isTradingPaused = (config, now = Date.now()) => {
+  const windows = Array.isArray(config.noTradeWindows) ? config.noTradeWindows : [];
+  if (!windows.length) return false;
+  const offset = Number.isFinite(config.tzOffsetMinutes) ? config.tzOffsetMinutes : 0;
+  const local = new Date(now + offset * 60_000);
+  const minute = local.getUTCHours() * 60 + local.getUTCMinutes();
+  return windows.some(({ from, to }) => {
+    const a = minutesOf(from);
+    const b = minutesOf(to);
+    return a < b ? minute >= a && minute < b : minute >= a || minute < b;
+  });
+};
+const pausedResults = (config) => config.coins.map((coin) => ({ coin, status: 'paused' }));
 // Configs saved before the risk filter existed behave as they did: Low only
 const allowedRiskLevels = (config) =>
   Array.isArray(config.riskLevels) && config.riskLevels.length ? config.riskLevels : ['Low'];
@@ -413,11 +435,12 @@ export class Autopilot {
     const trades = (await this.state.storage.get('trades')) ?? { open: [], recent: [] };
     const at = Date.now();
     await this.state.storage.put('lastScanAt', at);
-    const results = await this.scanForSignals(config, trades);
+    const paused = isTradingPaused(config, at);
+    const results = paused ? pausedResults(config) : await this.scanForSignals(config, trades);
     await this.state.storage.put('lastScan', { at, results });
     const failed = results.filter((r) => r.status === 'error');
     await this.state.storage.put('lastError', failed.length ? `${failed[0].coin}: ${failed[0].error}` : null);
-    if (config.hlPumpShort) {
+    if (config.hlPumpShort && !paused) {
       await this.state.storage.put('lastHlScanAt', at);
       await this.state.storage.put('lastHlScan', { at, ...(await this.scanHyperliquidPumps(config, trades)) });
     }
@@ -565,13 +588,14 @@ export class Autopilot {
         // Stamp first so a failing Telegram call cannot turn the 5-minute scan into a 10-second hammer
         const at = Date.now();
         await this.state.storage.put('lastScanAt', at);
-        const results = await this.scanForSignals(config, trades);
+        // Inside a no-trade window nothing new is opened; the open trades above are still managed
+        const results = isTradingPaused(config, at) ? pausedResults(config) : await this.scanForSignals(config, trades);
         await this.state.storage.put('lastScan', { at, results });
         // The per-coin results carry their own errors; a completed scan clears the tick-level one
         const failed = results.filter((r) => r.status === 'error');
         await this.state.storage.put('lastError', failed.length ? `${failed[0].coin}: ${failed[0].error}` : null);
       }
-      if (config.hlPumpShort) {
+      if (config.hlPumpShort && !isTradingPaused(config)) {
         const lastHlScanAt = (await this.state.storage.get('lastHlScanAt')) ?? 0;
         if (Date.now() - lastHlScanAt >= HL_SCAN_MS) {
           const at = Date.now();
@@ -800,7 +824,7 @@ export class Autopilot {
 // ---------- HTTP entry ----------
 
 const validateAutopilotConfig = (body) => {
-  const { channel, enabled, coins, timeframe, targetPct, riskLevels, hlPumpShort, hlPumpPct } = body ?? {};
+  const { channel, enabled, coins, timeframe, targetPct, riskLevels, hlPumpShort, hlPumpPct, noTradeWindows, tzOffsetMinutes } = body ?? {};
   if (!channel || typeof channel !== 'string') return { error: 'channel required' };
   if (typeof enabled !== 'boolean') return { error: 'enabled must be boolean' };
   if (!Array.isArray(coins) || coins.length < 1 || coins.length > AUTOPILOT_MAX_COINS) {
@@ -822,6 +846,16 @@ const validateAutopilotConfig = (body) => {
   if (!Number.isFinite(pumpPct) || pumpPct < HL_MIN_PUMP_PCT || pumpPct > HL_MAX_PUMP_PCT) {
     return { error: `hlPumpPct must be ${HL_MIN_PUMP_PCT}-${HL_MAX_PUMP_PCT}` };
   }
+  const windows = noTradeWindows === undefined ? [] : noTradeWindows;
+  if (
+    !Array.isArray(windows) ||
+    windows.length > 20 ||
+    !windows.every((w) => w && TIME_RE.test(w.from) && TIME_RE.test(w.to) && w.from !== w.to)
+  ) {
+    return { error: 'noTradeWindows must be a list of {from: "HH:MM", to: "HH:MM"}' };
+  }
+  const tz = tzOffsetMinutes === undefined ? 0 : Number(tzOffsetMinutes);
+  if (!Number.isFinite(tz) || tz < -840 || tz > 840) return { error: 'tzOffsetMinutes must be -840..840' };
   return {
     config: {
       channel: normalizeChannel(channel),
@@ -832,6 +866,8 @@ const validateAutopilotConfig = (body) => {
       riskLevels: RISK_LEVELS.filter((r) => risks.includes(r)),
       hlPumpShort: hlPumpShort === true,
       hlPumpPct: pumpPct,
+      noTradeWindows: windows.map((w) => ({ from: w.from, to: w.to })),
+      tzOffsetMinutes: tz,
     },
   };
 };

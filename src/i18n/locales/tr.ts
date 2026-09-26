@@ -368,6 +368,21 @@ const tr: Dictionary = {
   'appkey.save': 'Anahtarı kaydet',
   'appkey.saved': 'Kaydedildi',
   'msg.Request failed with status code 401': 'Uygulama anahtarı girilmemiş veya yanlış. Üst çubuktaki anahtar simgesine tıklayıp APP_KEY girin.',
+  'windows.title': 'İşlem yapılmayan saatler',
+  'windows.description': 'Bu yerel saat aralıklarında ne otopilot (sunucu) ne de Hyperliquid otomatik işlem yeni işlem açar. Açık işlemler stop ve hedeflerini korur ve her zamanki gibi kapanır. Aralık gece yarısını geçebilir.',
+  'windows.empty': 'Henüz duraklatma aralığı yok. Tüm gün işlem yapılabilir.',
+  'windows.from': 'Başlangıç',
+  'windows.to': 'Bitiş',
+  'windows.add': 'Aralık ekle',
+  'windows.remove': 'Kaldır',
+  'windows.pausedNow': '{to} saatine kadar durduruldu',
+  'windows.tradingNow': 'Şu an işlem serbest',
+  'windows.hint': 'Bu tarayıcıda saklanır ve her değişiklikte otopilota gönderilir.',
+  'windows.syncing': 'Otopilota gönderiliyor…',
+  'windows.synced': 'Otopilot güncellendi.',
+  'windows.syncFailed': 'Burada kaydedildi ama otopilot güncellenemedi. Üstteki panelde "Otopilotu güncelle"ye basın.',
+  'auto.status.paused': 'işlem yapılmayan saatler',
+  'hl.auto.status.paused': 'işlem yapılmayan saatler',
 };
 
 export default tr;
