@@ -377,6 +377,12 @@ const en = {
   'hl.history.reduceOnly': 'reduce-only',
   'hl.history.error': 'Could not load the history.',
   'hl.login.openInWallet': 'On a phone, open this page inside your wallet app’s browser and the connect button will work:',
+  'appkey.title': 'App key',
+  'appkey.intro': 'The key that unlocks the Telegram and autopilot server (its APP_KEY secret). Enter it once; it is stored in this browser only. Without it, sending signals and the autopilot answer "unauthorized".',
+  'appkey.placeholder': 'Paste the app key',
+  'appkey.save': 'Save key',
+  'appkey.saved': 'Saved',
+  'msg.Request failed with status code 401': 'App key missing or wrong. Click the key icon in the header and enter the APP_KEY.',
 };
 
 export default en;

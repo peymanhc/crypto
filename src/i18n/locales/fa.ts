@@ -362,6 +362,12 @@ const fa: Dictionary = {
   'hl.history.reduceOnly': 'فقط کاهش',
   'hl.history.error': 'تاریخچه دریافت نشد.',
   'hl.login.openInWallet': 'در گوشی، همین صفحه را داخل مرورگر اپ کیف پولتان باز کنید تا دکمه‌ی اتصال کار کند:',
+  'appkey.title': 'کلید اپ',
+  'appkey.intro': 'کلیدی که سرور تلگرام و Autopilot را باز می‌کند (همان secret با نام APP_KEY). یک بار وارد کنید؛ فقط در همین مرورگر ذخیره می‌شود. بدون آن، ارسال سیگنال و Autopilot جواب «unauthorized» می‌دهند.',
+  'appkey.placeholder': 'کلید اپ را بچسبانید',
+  'appkey.save': 'ذخیره‌ی کلید',
+  'appkey.saved': 'ذخیره شد',
+  'msg.Request failed with status code 401': 'کلید اپ وارد نشده یا اشتباه است. روی آیکون کلید در هدر بزنید و APP_KEY را وارد کنید.',
 };
 
 export default fa;

@@ -362,6 +362,12 @@ const fr: Dictionary = {
   'hl.history.reduceOnly': 'réduction seule',
   'hl.history.error': "Impossible de charger l'historique.",
   'hl.login.openInWallet': 'Sur mobile, ouvrez cette page dans le navigateur de votre application de portefeuille et le bouton de connexion fonctionnera :',
+  'appkey.title': "Clé de l'app",
+  'appkey.intro': "La clé qui déverrouille le serveur Telegram et autopilote (son secret APP_KEY). Saisissez-la une fois ; elle n'est stockée que dans ce navigateur. Sans elle, l'envoi de signaux et l'autopilote répondent « unauthorized ».",
+  'appkey.placeholder': "Collez la clé de l'app",
+  'appkey.save': 'Enregistrer la clé',
+  'appkey.saved': 'Enregistrée',
+  'msg.Request failed with status code 401': "Clé de l'app absente ou incorrecte. Cliquez sur l'icône clé dans l'en-tête et saisissez APP_KEY.",
 };
 
 export default fr;

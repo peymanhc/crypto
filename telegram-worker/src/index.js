@@ -63,17 +63,39 @@ const RISK_LEVELS = ['Low', 'Medium', 'High'];
 const allowedRiskLevels = (config) =>
   Array.isArray(config.riskLevels) && config.riskLevels.length ? config.riskLevels : ['Low'];
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'content-type',
+// Browsers may call the Worker only from the published app (and a local dev server)
+const ALLOWED_ORIGINS = ['https://peymanhc.github.io', 'http://localhost:5173', 'http://localhost:4173'];
+
+const corsHeaders = (request) => {
+  const origin = request?.headers?.get('origin') ?? '';
+  return {
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type, x-app-key',
+    Vary: 'Origin',
+  };
 };
 
+// Responses built inside the Durable Objects carry no CORS headers; the HTTP entry adds them
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS_HEADERS, 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json' },
   });
+
+const withCors = (response, request) => {
+  const out = new Response(response.body, response);
+  for (const [key, value] of Object.entries(corsHeaders(request))) out.headers.set(key, value);
+  return out;
+};
+
+// Every request from the app must carry the APP_KEY secret in the x-app-key header.
+// The Telegram webhook has its own secret and /health is public.
+const isAuthorized = (request, env) => {
+  const expected = (env.APP_KEY ?? '').trim();
+  if (!expected) return false;
+  return request.headers.get('x-app-key') === expected;
+};
 
 // Accept "@name", "name", a t.me link, or a numeric -100... id
 const normalizeChannel = (channel) => {
@@ -817,8 +839,13 @@ const validateAutopilotConfig = (body) => {
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS_HEADERS });
+      return new Response(null, { headers: corsHeaders(request) });
     }
+    return withCors(await handle(request, env), request);
+  },
+};
+
+async function handle(request, env) {
     const url = new URL(request.url);
 
     // Diagnostic: verifies which price sources are reachable from production
@@ -897,6 +924,32 @@ export default {
         console.log('report failed', { chatId, range, error: String(err) });
       }
       return json({ ok: true });
+    }
+
+    // Everything below is called by the app and needs the app key
+    if (!isAuthorized(request, env)) {
+      return json({ ok: false, error: 'unauthorized' }, 401);
+    }
+
+    // The app posts to Telegram through here, so the bot token never leaves the Worker
+    if (request.method === 'POST' && url.pathname === '/send') {
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return json({ ok: false, error: 'invalid JSON' }, 400);
+      }
+      const { channel, text, replyToMessageId } = body ?? {};
+      if (!channel || typeof channel !== 'string' || typeof text !== 'string' || !text.trim() || text.length > 4096) {
+        return json({ ok: false, error: 'bad request' }, 400);
+      }
+      const replyTo = Number.isInteger(replyToMessageId) && replyToMessageId > 0 ? replyToMessageId : undefined;
+      try {
+        const messageId = await sendTelegram(env, normalizeChannel(channel), text.trim(), replyTo);
+        return json({ ok: true, messageId });
+      } catch (err) {
+        return json({ ok: false, error: `telegram: ${String(err)}` }, 502);
+      }
     }
 
     if (url.pathname === '/autopilot') {
@@ -1000,5 +1053,4 @@ export default {
     const stub = env.CLOSE_SCHEDULER.get(env.CLOSE_SCHEDULER.newUniqueId());
     await stub.fetch('https://do/schedule', { method: 'POST', body: JSON.stringify(job) });
     return json({ ok: true, mode: job.mode });
-  },
-};
+}

@@ -362,6 +362,12 @@ const tr: Dictionary = {
   'hl.history.reduceOnly': 'yalnızca azalt',
   'hl.history.error': 'Geçmiş yüklenemedi.',
   'hl.login.openInWallet': 'Telefonda bu sayfayı cüzdan uygulamanızın tarayıcısında açın; bağlan düğmesi orada çalışır:',
+  'appkey.title': 'Uygulama anahtarı',
+  'appkey.intro': 'Telegram ve otopilot sunucusunu açan anahtar (APP_KEY gizli değeri). Bir kez girin; yalnızca bu tarayıcıda saklanır. Onsuz sinyal gönderme ve otopilot "unauthorized" yanıtı verir.',
+  'appkey.placeholder': 'Uygulama anahtarını yapıştırın',
+  'appkey.save': 'Anahtarı kaydet',
+  'appkey.saved': 'Kaydedildi',
+  'msg.Request failed with status code 401': 'Uygulama anahtarı girilmemiş veya yanlış. Üst çubuktaki anahtar simgesine tıklayıp APP_KEY girin.',
 };
 
 export default tr;

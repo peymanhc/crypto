@@ -362,6 +362,12 @@ const ja: Dictionary = {
   'hl.history.reduceOnly': '決済専用',
   'hl.history.error': '履歴を読み込めませんでした。',
   'hl.login.openInWallet': 'スマートフォンでは、このページをウォレットアプリ内のブラウザで開くと接続ボタンが使えます:',
+  'appkey.title': 'アプリキー',
+  'appkey.intro': 'Telegram とオートパイロットのサーバーを開くキー (APP_KEY シークレット) です。一度入力すればこのブラウザにのみ保存されます。ない場合、シグナル送信とオートパイロットは「unauthorized」を返します。',
+  'appkey.placeholder': 'アプリキーを貼り付け',
+  'appkey.save': 'キーを保存',
+  'appkey.saved': '保存しました',
+  'msg.Request failed with status code 401': 'アプリキーが未入力か間違っています。ヘッダーの鍵アイコンから APP_KEY を入力してください。',
 };
 
 export default ja;

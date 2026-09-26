@@ -69,35 +69,52 @@ export const fetchTradingPairs = async (): Promise<string[]> => {
   return cachedPairs;
 };
 
-// ---------- Telegram channel integration ----------
-// One app-level bot (token via .env.local, see .env.example); each user enters
-// their OWN channel in the UI and adds the bot as admin there. Note: Vite bakes
-// the token into the built bundle, so it is extractable from a public deployment.
-const TELEGRAM_BOT_TOKEN = "8848108856:AAEsfl_WRDJy_o1WhLZ8r7Le96s7zSLH3KM"
+// ---------- Cloudflare Worker (telegram-worker/) ----------
+// The Worker holds the Telegram bot token and posts on the app's behalf, runs the
+// autopilot and the delayed CLOSE messages. Every call must carry the app key
+// (the Worker's APP_KEY secret), which the visitor enters once in the header dialog.
+const TELEGRAM_WORKER_URL = "https://crypto-signal-scheduler.peymanhc.workers.dev";
 
+const APP_KEY_STORAGE = 'app-key';
+
+export const getAppKey = (): string => {
+  try {
+    return localStorage.getItem(APP_KEY_STORAGE) ?? '';
+  } catch {
+    return '';
+  }
+};
+
+export const setAppKey = (key: string): void => {
+  try {
+    localStorage.setItem(APP_KEY_STORAGE, key.trim());
+  } catch {
+    // storage unavailable — the key is lost on reload
+  }
+};
+
+const workerHeaders = () => ({ 'x-app-key': getAppKey() });
+
+const workerUrl = (path: string) => `${TELEGRAM_WORKER_URL.replace(/\/$/, '')}${path}`;
+
+// ---------- Telegram channel integration ----------
+// One app-level bot; each user enters their OWN channel in the UI and adds the bot
+// as admin there. The bot token lives only in the Worker.
 export const TELEGRAM_BOT_USERNAME = '@SignalPHC_bot';
 
-export const isTelegramConfigured = Boolean(TELEGRAM_BOT_TOKEN);
+export const isTelegramConfigured = Boolean(TELEGRAM_WORKER_URL);
 
 // Resolves to the Telegram message_id so a later CLOSE can be posted as a reply to it
 export const sendSignalToTelegram = async (text: string, channel: string): Promise<number | null> => {
-  if (!TELEGRAM_BOT_TOKEN) {
+  if (!TELEGRAM_WORKER_URL) {
     throw new Error('Telegram is not configured');
   }
-  const trimmed = channel.trim();
-  // Accept "@name", "name", a t.me link, or a numeric -100... id for private channels
-  const bare = trimmed.replace(/^https?:\/\/t\.me\//i, '');
-  const chatId = /^-?\d+$/.test(bare) || bare.startsWith('@') ? bare : `@${bare}`;
-  const response = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    chat_id: chatId,
-    text,
-  });
-  return response.data?.result?.message_id ?? null;
+  const response = await axios.post(workerUrl('/send'), { channel: channel.trim(), text }, { headers: workerHeaders() });
+  if (!response.data?.ok) {
+    throw new Error(response.data?.error ?? 'Sending failed');
+  }
+  return response.data.messageId ?? null;
 };
-
-// Optional Cloudflare Worker (see telegram-worker/) that fires a delayed message
-// server-side, so auto-close works even after the visitor closes the browser.
-const TELEGRAM_WORKER_URL = "https://crypto-signal-scheduler.peymanhc.workers.dev";
 
 export const isAutoCloseAvailable = Boolean(TELEGRAM_WORKER_URL);
 
@@ -124,14 +141,14 @@ export const scheduleCloseMessage = async (channel: string, schedule: CloseSched
   if (!TELEGRAM_WORKER_URL) {
     throw new Error('Auto-close worker is not configured');
   }
-  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/schedule`, {
+  const response = await axios.post(workerUrl('/schedule'), {
     channel,
     text: schedule.text,
     ...(schedule.delaySeconds !== undefined ? { delaySeconds: schedule.delaySeconds } : {}),
     ...(schedule.targetPct !== undefined ? { targetPct: schedule.targetPct } : {}),
     ...(schedule.trade ? { trade: schedule.trade } : {}),
     ...(schedule.replyToMessageId ? { replyToMessageId: schedule.replyToMessageId } : {}),
-  });
+  }, { headers: workerHeaders() });
   if (!response.data?.ok) {
     throw new Error('Scheduling failed');
   }
@@ -145,7 +162,7 @@ export const saveAutopilot = async (config: Omit<AutopilotConfig, 'updatedAt'>):
   if (!TELEGRAM_WORKER_URL) {
     throw new Error('Autopilot worker is not configured');
   }
-  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/autopilot`, config);
+  const response = await axios.post(workerUrl('/autopilot'), config, { headers: workerHeaders() });
   if (!response.data?.ok) {
     throw new Error(response.data?.error ?? 'Saving autopilot failed');
   }
@@ -157,10 +174,7 @@ export const resetAutopilot = async (channel: string): Promise<AutopilotStatus> 
   if (!TELEGRAM_WORKER_URL) {
     throw new Error('Autopilot worker is not configured');
   }
-  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/autopilot`, {
-    action: 'reset',
-    channel,
-  });
+  const response = await axios.post(workerUrl('/autopilot'), { action: 'reset', channel }, { headers: workerHeaders() });
   if (!response.data?.ok) {
     throw new Error(response.data?.error ?? 'Reset failed');
   }
@@ -171,7 +185,8 @@ const autopilotAction = async (payload: Record<string, unknown>): Promise<Autopi
   if (!TELEGRAM_WORKER_URL) {
     throw new Error('Autopilot worker is not configured');
   }
-  const response = await axios.post(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/autopilot`, payload, {
+  const response = await axios.post(workerUrl('/autopilot'), payload, {
+    headers: workerHeaders(),
     validateStatus: () => true,
   });
   if (!response.data?.ok) {
@@ -192,8 +207,9 @@ export const fetchAutopilotStatus = async (channel: string): Promise<AutopilotSt
   if (!TELEGRAM_WORKER_URL) {
     throw new Error('Autopilot worker is not configured');
   }
-  const response = await axios.get(`${TELEGRAM_WORKER_URL.replace(/\/$/, '')}/autopilot`, {
+  const response = await axios.get(workerUrl('/autopilot'), {
     params: { channel },
+    headers: workerHeaders(),
   });
   if (!response.data?.ok) {
     throw new Error(response.data?.error ?? 'Loading autopilot failed');

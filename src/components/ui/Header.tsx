@@ -5,6 +5,7 @@ import NavLinks from './NavLinks';
 import InstallButton from './InstallButton';
 import LiveBadge from './LiveBadge';
 import LanguageSwitcher from './LanguageSwitcher';
+import AppKeyButton from './AppKeyButton';
 
 // Sticky glass header: logo on the left, pages in the middle, install + live status on the right
 const Header: React.FC<{ route: Route }> = ({ route }) => (
@@ -19,6 +20,7 @@ const Header: React.FC<{ route: Route }> = ({ route }) => (
       <Logo />
       <NavLinks route={route} />
       <div className="flex items-center gap-2">
+        <AppKeyButton />
         <LanguageSwitcher />
         <InstallButton />
         <LiveBadge />
