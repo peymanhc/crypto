@@ -1,0 +1,1 @@
+const i={en:"English",fa:"Persian (Farsi)",zh:"Simplified Chinese",hi:"Hindi",es:"Spanish",ar:"Arabic",fr:"French",bn:"Bengali",pt:"Portuguese",ru:"Russian",ur:"Urdu",id:"Indonesian",de:"German",ja:"Japanese",tr:"Turkish",ko:"Korean",vi:"Vietnamese",it:"Italian",th:"Thai",pl:"Polish"};export{i as L};
