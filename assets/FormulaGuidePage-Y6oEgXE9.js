@@ -1,4 +1,4 @@
-import{r as x,j as s}from"./react-yauY4KhX.js";import{c as N,u as R,P as S,k as M,r as T,A as E,bF as I,ag as _,$ as C,b4 as B}from"./index-C-1LvXOx.js";import{B as D,L as O}from"./StrategyLabPage-Do7vXo-Q.js";import{I as L}from"./info-DBgtL-WF.js";import{m as U}from"./motion-7ejKzmrc.js";import"./charts-CViCQQuI.js";import"./candles-C2RCBgof.js";import"./chartTheme-CyNuWCjp.js";import"./simulateSymbol-CMAljKGy.js";import"./backtestData-CqxhzA8J.js";import"./languageNames-D6xJrWFR.js";import"./square-H5fpIT0U.js";/**
+import{r as x,j as s}from"./react-yauY4KhX.js";import{c as N,u as R,P as S,k as M,r as T,A as E,bF as I,ag as _,$ as C,b4 as B}from"./index-DMgx9MGx.js";import{B as D,L as O}from"./StrategyLabPage-BE_bLrDN.js";import{I as L}from"./info-CqRRKdgy.js";import{m as U}from"./motion-7ejKzmrc.js";import"./charts-CViCQQuI.js";import"./candles-C2RCBgof.js";import"./chartTheme-CyNuWCjp.js";import"./simulateSymbol-BlgavzZG.js";import"./backtestData-Ca2PnShp.js";import"./languageNames-D6xJrWFR.js";import"./square-NdsHCA2z.js";/**
  * @license lucide-react v0.344.0 - ISC
  *
  * This source code is licensed under the ISC license.
