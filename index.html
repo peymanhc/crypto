@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Coin Analysis</title>
     <meta name="description" content="Multi-timeframe crypto signals, server-side autopilot and a historical backtester." />
     <meta name="theme-color" content="#05070d" />
@@ -72,11 +72,11 @@
         #splash *, #splash *::before, #splash *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
       }
     </style>
-    <script type="module" crossorigin src="/crypto/assets/index-DaubgRoR.js"></script>
+    <script type="module" crossorigin src="/crypto/assets/index-CyupuTSd.js"></script>
     <link rel="modulepreload" crossorigin href="/crypto/assets/react-yauY4KhX.js">
     <link rel="modulepreload" crossorigin href="/crypto/assets/motion-7ejKzmrc.js">
     <link rel="modulepreload" crossorigin href="/crypto/assets/hyperliquid-R4QzEq2o.js">
-    <link rel="stylesheet" crossorigin href="/crypto/assets/index-CEuKcaxd.css">
+    <link rel="stylesheet" crossorigin href="/crypto/assets/index-B3tCtk0u.css">
   <link rel="manifest" href="/crypto/manifest.webmanifest"></head>
   <body>
     <div id="splash" aria-hidden="true">
@@ -101,6 +101,11 @@
         <div class="bar"></div>
       </div>
     </div>
+    <script>
+      // No pinch zoom on iPhones (Safari ignores user-scalable=no); the charts handle their own touches
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+      document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
+    </script>
     <script>
       // When the splash started, and when its logo finished drawing (the app waits for both)
       window.__splashAt = Date.now();
