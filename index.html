@@ -22,14 +22,90 @@
     <style>
       /* First paint before the bundle arrives: no white flash on a dark app */
       html { background: #05070d; }
+
+      /* ---------- splash: shown from the first frame, removed by the app once it is ready ---------- */
+      #splash {
+        position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; overflow: hidden;
+        background: #05070d; color: #e2e8f0; font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+        transition: opacity .6s cubic-bezier(.22,1,.36,1), transform .6s cubic-bezier(.22,1,.36,1), filter .6s;
+      }
+      #splash.out { opacity: 0; transform: scale(1.04); filter: blur(6px); pointer-events: none; }
+      /* drifting glows */
+      #splash .glow { position: absolute; width: 52vmax; height: 52vmax; border-radius: 50%; filter: blur(110px); opacity: .16; }
+      #splash .g1 { background: #22d3ee; top: -22vmax; left: -18vmax; animation: sp-drift1 9s ease-in-out infinite alternate; }
+      #splash .g2 { background: #a78bfa; bottom: -26vmax; right: -20vmax; animation: sp-drift2 11s ease-in-out infinite alternate; }
+      /* a floor grid receding into the dark */
+      #splash .grid {
+        position: absolute; left: -50%; right: -50%; bottom: -10%; height: 70%;
+        background-image: linear-gradient(rgba(34,211,238,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(167,139,250,.14) 1px, transparent 1px);
+        background-size: 56px 56px; transform: perspective(520px) rotateX(62deg); transform-origin: bottom;
+        -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 75%); mask-image: linear-gradient(to top, #000 10%, transparent 75%);
+        animation: sp-grid 2.4s linear infinite;
+      }
+      #splash .core { position: relative; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+      #splash .mark { position: relative; width: 120px; height: 120px; }
+      #splash .mark::before {
+        content: ''; position: absolute; inset: -18px; border-radius: 40px;
+        background: radial-gradient(closest-side, rgba(34,211,238,.45), transparent); animation: sp-pulse 2.4s ease-in-out .9s infinite; opacity: 0;
+      }
+      #splash .mark svg { position: relative; width: 100%; height: 100%; border-radius: 26px; box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 20px 60px -20px rgba(34,211,238,.6); }
+      #splash .ring { stroke-dasharray: 1; stroke-dashoffset: 1; animation: sp-draw .9s cubic-bezier(.65,0,.35,1) .15s forwards; }
+      #splash .line { stroke-dasharray: 1; stroke-dashoffset: 1; animation: sp-draw .55s cubic-bezier(.65,0,.35,1) .85s forwards; }
+      #splash .arrow { stroke-dasharray: 1; stroke-dashoffset: 1; animation: sp-draw .3s ease-out 1.3s forwards; }
+      #splash .word { font-size: 34px; font-weight: 700; letter-spacing: -.02em; opacity: 0; transform: translateY(8px); animation: sp-rise .7s cubic-bezier(.22,1,.36,1) .55s forwards; }
+      #splash .word b {
+        font-weight: 700; background: linear-gradient(90deg, #22d3ee, #a78bfa, #22d3ee); background-size: 200% 100%;
+        -webkit-background-clip: text; background-clip: text; color: transparent; animation: sp-shine 3s linear 1.2s infinite;
+      }
+      #splash .tag { margin-top: -12px; font: 500 11px/1 'Inter', system-ui, sans-serif; letter-spacing: .32em; text-transform: uppercase; color: #64748b; opacity: 0; animation: sp-rise .7s cubic-bezier(.22,1,.36,1) .75s forwards; }
+      #splash .bar { position: relative; width: 168px; height: 2px; border-radius: 2px; overflow: hidden; background: rgba(255,255,255,.07); opacity: 0; animation: sp-rise .5s ease .9s forwards; }
+      #splash .bar::after { content: ''; position: absolute; inset: 0; width: 40%; border-radius: 2px; background: linear-gradient(90deg, transparent, #22d3ee, #a78bfa, transparent); animation: sp-load 1.2s cubic-bezier(.45,0,.55,1) infinite; }
+      @keyframes sp-draw { to { stroke-dashoffset: 0; } }
+      @keyframes sp-rise { to { opacity: 1; transform: none; } }
+      @keyframes sp-shine { to { background-position: -200% 0; } }
+      @keyframes sp-load { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      @keyframes sp-pulse { 0%, 100% { opacity: 0; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.05); } }
+      @keyframes sp-grid { to { background-position: 0 56px; } }
+      @keyframes sp-drift1 { to { transform: translate(14vmax, 10vmax) scale(1.15); } }
+      @keyframes sp-drift2 { to { transform: translate(-12vmax, -8vmax) scale(1.1); } }
+      @media (prefers-reduced-motion: reduce) {
+        #splash *, #splash *::before, #splash *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+      }
     </style>
-    <script type="module" crossorigin src="/crypto/assets/index-C9aWfkVx.js"></script>
+    <script type="module" crossorigin src="/crypto/assets/index-BgM2vCK5.js"></script>
     <link rel="modulepreload" crossorigin href="/crypto/assets/react-yauY4KhX.js">
     <link rel="modulepreload" crossorigin href="/crypto/assets/motion-7ejKzmrc.js">
     <link rel="modulepreload" crossorigin href="/crypto/assets/hyperliquid-R4QzEq2o.js">
-    <link rel="stylesheet" crossorigin href="/crypto/assets/index-BHmnK2PE.css">
+    <link rel="stylesheet" crossorigin href="/crypto/assets/index-DbNfQGGQ.css">
   <link rel="manifest" href="/crypto/manifest.webmanifest"></head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <div class="glow g1"></div>
+      <div class="glow g2"></div>
+      <div class="grid"></div>
+      <div class="core">
+        <div class="mark">
+          <svg viewBox="0 0 512 512">
+            <defs>
+              <linearGradient id="sp-ring" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#22d3ee" /><stop offset="1" stop-color="#a78bfa" /></linearGradient>
+              <radialGradient id="sp-bg" cx="0.3" cy="0.2" r="0.9"><stop offset="0" stop-color="#16213a" /><stop offset="1" stop-color="#0a0f1c" /></radialGradient>
+            </defs>
+            <rect width="512" height="512" rx="116" fill="url(#sp-bg)" />
+            <path class="ring" pathLength="1" d="M 363.5 264.8 A 128 128 0 1 1 279.8 155.7" fill="none" stroke="url(#sp-ring)" stroke-width="54" stroke-linecap="round" />
+            <path class="line" pathLength="1" d="M 166 318 L 230 254 L 276 296 L 396 168" fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" />
+            <path class="arrow" pathLength="1" d="M 336 156 L 406 156 L 406 226" fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div class="word">Coin<b>Analysis</b></div>
+        <div class="tag">Signals · Autopilot · Markets</div>
+        <div class="bar"></div>
+      </div>
+    </div>
+    <script>
+      // When the splash started, and when its logo finished drawing (the app waits for both)
+      window.__splashAt = Date.now();
+      document.querySelector('#splash .arrow').addEventListener('animationend', function () { window.__splashDrawn = true; });
+    </script>
     <div id="root"></div>
   </body>
 </html>
